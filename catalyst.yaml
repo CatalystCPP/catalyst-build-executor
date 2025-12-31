@@ -1,0 +1,19 @@
+meta:
+  min_ver: 1.1.0
+manifest:
+  name: cbe
+  type: BINARY
+  version: 0.0.1
+  description: Your Description Goes Here
+  provides: ""
+  tooling:
+    CC: clang
+    CXX: clang++
+    CCFLAGS: ""
+    CXXFLAGS: ""
+  dirs:
+    include:
+      - include
+    source:
+      - src
+    build: build
