@@ -1,11 +1,17 @@
 #include "cbe/graph.hpp"
 
+#include "cbe/mmap.hpp"
 #include "cbe/utility.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <cstring>
+#include <filesystem>
 #include <format>
 #include <functional>
+
+namespace fs = std::filesystem;
 
 namespace catalyst {
 
@@ -20,6 +26,90 @@ size_t BuildGraph::get_or_create_node(std::string_view path) {
     return id;
 }
 
+std::shared_ptr<MappedFile> parse_depfile(const std::filesystem::path &path, auto callback) {
+    if (!fs::exists(path)) {
+        return nullptr;
+    }
+    auto map = std::make_shared<MappedFile>(path);
+    std::string_view content = map->content();
+
+    if (content.empty())
+        return map;
+
+    const char *ptr = content.data();
+    const char *end = ptr + content.size();
+
+    // 1. Skip to deps, ignoring final output
+    const char *colon = static_cast<const char *>(std::memchr(ptr, ':', end - ptr));
+    if (!colon)
+        return map;
+    ptr = colon + 1;
+
+    // Main parsing loop
+    while (ptr < end) {
+        while (ptr < end) {
+            unsigned char c = *ptr;
+            if (c > ' ' && c != '\\')
+                break;
+
+            if (c <= ' ') {
+                ptr++;
+            } else if (c == '\\') {
+                if (ptr + 1 < end && (ptr[1] == '\n' || ptr[1] == '\r')) {
+                    ptr++; // skip
+                    if (*ptr == '\r')
+                        ptr++;
+                    if (ptr < end && *ptr == '\n')
+                        ptr++;
+                } else {
+                    break; // Escaped character, part of a filename
+                }
+            }
+        }
+
+        if (ptr >= end)
+            break;
+
+        // Extract Token
+        const char *start = ptr;
+        while (ptr < end) {
+            unsigned char c = *ptr;
+
+            if (c <= ' ' || c == '\\')
+                break;
+            ptr++;
+        }
+
+        // Handle the edge case of an escaped space or line continuation within a token
+        if (ptr < end && *ptr == '\\') {
+            // If we hit a backslash, we fall back to a slower scan for this specific token
+            while (ptr < end) {
+                if (*ptr == '\\') {
+                    if (ptr + 1 >= end) {
+                        // Dangling backslash at EOF
+                        ++ptr;
+                        break;
+                    }
+                    if (ptr[1] == '\n' || ptr[1] == '\r') {
+                        break; // line continuation
+                    }
+                    ptr += 2; // Safe: we know ptr + 1 < end
+                } else if (static_cast<unsigned char>(*ptr) <= ' ') {
+                    break;
+                } else {
+                    ptr++;
+                }
+            }
+        }
+
+        if (ptr > start) {
+            callback(std::string_view(start, ptr - start));
+        }
+    }
+
+    return map;
+}
+
 Result<size_t> BuildGraph::add_step(BuildStep step) {
     size_t out_id = get_or_create_node(step.output);
 
@@ -30,6 +120,18 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
     size_t step_id = steps_.size();
     steps_.push_back(step); // Store the step
     nodes_[out_id].step_id = step_id;
+
+    if (step.tool == "cc" || step.tool == "cxx") {
+        const fs::path depfile_path = std::format("{}.d", step.output);
+        if (auto mmap = parse_depfile(depfile_path, [this, out_id](std::string_view fn) {
+                size_t in_id = get_or_create_node(fn);
+                this->nodes_[in_id].out_edges.push_back(out_id);
+            })) {
+            add_resource(mmap);
+        }
+    } else if (step.tool == "ld" || step.tool == "sld" || step.tool == "ar") {
+        // TODO: parse .rsp file
+    }
 
     // Iterate over comma-separated inputs
     std::string_view remaining = step.inputs;
@@ -43,9 +145,6 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
             in_path = remaining.substr(0, comma_pos);
             remaining = remaining.substr(comma_pos + 1);
         }
-
-        // TODO: check for and dispatch depfile parsing logic (check extension)
-        // TODO: check for and dispatch response file parsing logic (check extension)
 
         if (!in_path.empty()) {
             size_t in_id = get_or_create_node(in_path);
