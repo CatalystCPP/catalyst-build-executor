@@ -2,10 +2,12 @@
 
 #include "cbe/builder.hpp"
 #include "cbe/utility.hpp"
-#include "mmap.hpp" // Use our internal mmap header
+#include "cbe/mmap.hpp" // Use our internal mmap header
 
+#include <cctype>
 #include <iostream>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -43,11 +45,14 @@ Result<void> parse_step(const std::string_view line, CBEBuilder &builder) {
         return std::unexpected(std::format("Malformed step line (missing second pipe): {}", line));
     }
 
-    builder.add_step({
-        line.substr(0, first_pipe),                                  // step_type
-        line.substr(first_pipe + 1, second_pipe - (first_pipe + 1)), // inputs
-        line.substr(second_pipe + 1)                                 // output
-    });
+    if (auto res = builder.add_step({
+            line.substr(0, first_pipe),                                  // step_type
+            line.substr(first_pipe + 1, second_pipe - (first_pipe + 1)), // inputs
+            line.substr(second_pipe + 1)                                 // output
+        });
+        !res) {
+        return std::unexpected(res.error());
+    }
     return {};
 }
 
@@ -66,19 +71,19 @@ Result<void> parse(CBEBuilder &builder, const std::filesystem::path &path) {
     size_t start = 0;
     while (start < content.size()) {
         size_t end = content.find('\n', start);
+        // last line of the file
         if (end == std::string_view::npos) {
             end = content.size();
         }
 
         std::string_view line = content.substr(start, end - start);
+        // windows CRLF handling
         if (!line.empty() && line.back() == '\r') {
             line.remove_suffix(1);
         }
 
         if (!line.empty()) {
-            char first = line[0];
-
-            if (first == '#') {
+            if (line.starts_with("#")) {
                 // Comment
             } else if (line.starts_with("DEF|")) {
                 auto res = parse_def(line, builder);
