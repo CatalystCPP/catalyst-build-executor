@@ -16,7 +16,7 @@ Definitions configure the toolchain environment. These must appear at the top of
 | --- | --- |
 | `DEF\|cc\|<val>` | The C compiler (e.g., `/usr/bin/clang`). |
 | `DEF\|cxx\|<val>` | The C++ compiler (e.g., `/usr/bin/clang++`). |
-| `DEF\|cflags\|<val>` | Flags for `cc` steps. |
+| `DEF\|ccflags\|<val>` | Flags for `cc` steps. |
 | `DEF\|cxxflags\|<val>` | Flags for `cxx` steps. |
 | `DEF\|ldflags\|<val>` | Linker search paths and general flags. |
 | `DEF\|ldlibs\|<val>` | Libraries to link against (e.g., `-lpthread`). |
@@ -54,7 +54,7 @@ information to `$out.d`.
 
 | Key | Type | Default Command Template |
 | --- | --- | --- |
-| `cc` | C Compile | `$cc $cflags -MMD -MF $out.d -c $in -o $out` |
+| `cc` | C Compile | `$cc $ccflags -MMD -MF $out.d -c $in -o $out` |
 | `cxx` | C++ Compile | `$cxx $cxxflags -MMD -MF $out.d -c $in -o $out` |
 | `ld` | Binary Link | `$cxx $in -o $out $ldflags $ldlibs` |
 | `ar` | Static Link | `$ar rcs $out $in $ldflags $ldlibs` |
