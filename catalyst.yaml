@@ -10,7 +10,7 @@ manifest:
     CC: clang
     CXX: clang++
     CCFLAGS: ""
-    CXXFLAGS: "--std=c++23"
+    CXXFLAGS: "--std=c++23 -Wall -Wextra"
   dirs:
     include:
       - include
