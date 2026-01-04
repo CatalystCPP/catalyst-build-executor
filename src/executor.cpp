@@ -12,7 +12,11 @@
 namespace catalyst {
 
 bool file_changed(const std::filesystem::path &input_file, const auto &out_mod_time) {
-    return std::filesystem::last_write_time(input_file) >= out_mod_time;
+    std::error_code ec;
+    auto in_time = std::filesystem::last_write_time(input_file, ec);
+    if (ec)
+        return true;
+    return in_time >= out_mod_time;
 }
 
 Executor::Executor(CBEBuilder &&builder) : builder(std::move(builder)) {
@@ -101,6 +105,15 @@ Result<void> Executor::execute() {
                     if (file_changed(input, output_modtime)) {
                         needs_rebuild = true;
                         break;
+                    }
+                }
+
+                if (!needs_rebuild && step.depfile_inputs.has_value()) {
+                    for (const auto &dep : *step.depfile_inputs) {
+                        if (file_changed(std::filesystem::path(dep), output_modtime)) {
+                            needs_rebuild = true;
+                            break;
+                        }
                     }
                 }
             } else {
