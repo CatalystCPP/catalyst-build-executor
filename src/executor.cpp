@@ -1,6 +1,7 @@
 #include "cbe/executor.hpp"
 
 #include "cbe/builder.hpp"
+#include "cbe/process_exec.hpp"
 
 #include <condition_variable>
 #include <filesystem>
@@ -8,6 +9,9 @@
 #include <mutex>
 #include <print>
 #include <queue>
+#include <ranges>
+#include <string>
+#include <vector>
 
 namespace catalyst {
 
@@ -45,6 +49,13 @@ Result<void> Executor::execute() {
     const std::string cflags = get_def("cflags");
     const std::string ldflags = get_def("ldflags");
     const std::string ldlibs = get_def("ldlibs");
+
+    const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector>();
+    const std::vector cxx_vec = std::ranges::views::lazy_split(cxx, ' ') | std::ranges::to<std::vector>();
+    const std::vector cflags_vec = std::ranges::views::split(cflags, ' ') | std::ranges::to<std::vector>();
+    const std::vector cxxflags_vec = std::ranges::views::split(cxxflags, ' ') | std::ranges::to<std::vector>();
+    const std::vector ldflags_vec = std::ranges::views::split(ldflags, ' ') | std::ranges::to<std::vector>();
+    const std::vector ldlibs_vec = std::ranges::views::split(ldlibs, ' ') | std::ranges::to<std::vector>();
 
     // Build in-degrees
     std::vector<int> in_degrees(build_graph.nodes().size(), 0);
@@ -121,21 +132,63 @@ Result<void> Executor::execute() {
             }
 
             if (needs_rebuild) {
-                if (step.tool == "cc") {
-                    command_string = std::format(
-                        "{} {} -MMD -MF {}.d -c {} -o {}", cc, cflags, step.output, inputs_str, step.output);
-                } else if (step.tool == "cxx") {
-                    command_string = std::format(
-                        "{} {} -MMD -MF {}.d -c {} -o {}", cxx, cxxflags, step.output, inputs_str, step.output);
-                } else if (step.tool == "ld") {
-                    command_string = std::format("{} {} -o {} {} {}", cxx, inputs_str, step.output, ldflags, ldlibs);
-                } else if (step.tool == "ar") {
-                    command_string = std::format("ar rcs {} {}", step.output, inputs_str);
-                } else if (step.tool == "sld") {
-                    command_string = std::format("{} -shared {} -o {}", cxx, inputs_str, step.output);
-                }
                 std::println("{} -> {}", step.tool, step.output);
-                std::system(command_string.c_str());
+
+                static constexpr auto ARGS_VEC_INIT_SZ= 40;
+                std::vector<std::string> args;
+                args.reserve(ARGS_VEC_INIT_SZ);
+                auto add_parts = [&args](const auto &parts) {
+                    args.reserve(args.size() + parts.size());
+                    for (const auto &part : parts) {
+                        if (part.begin() != part.end()) {
+                            args.push_back(std::ranges::to<std::string>(part));
+                        }
+                    }
+                };
+
+                if (step.tool == "cc") {
+                    add_parts(cc_vec);
+                    add_parts(cflags_vec);
+                    args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+                    args.insert(args.end(), inputs.begin(), inputs.end());
+                    args.push_back("-o");
+                    args.push_back(std::string(step.output));
+                } else if (step.tool == "cxx") {
+                    add_parts(cxx_vec);
+                    add_parts(cxxflags_vec);
+                    args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+                    args.insert(args.end(), inputs.begin(), inputs.end());
+                    args.push_back("-o");
+                    args.push_back(std::string(step.output));
+                } else if (step.tool == "ld") {
+                    add_parts(cxx_vec);
+                    args.insert(args.end(), inputs.begin(), inputs.end());
+                    args.push_back("-o");
+                    args.push_back(std::string(step.output));
+                    add_parts(ldflags_vec);
+                    add_parts(ldlibs_vec);
+                } else if (step.tool == "ar") {
+                    args.insert(args.end(), {"ar", "rcs", std::string(step.output)});
+                    args.insert(args.end(), inputs.begin(), inputs.end());
+                } else if (step.tool == "sld") {
+                    add_parts(cxx_vec);
+                    args.push_back("-shared");
+                    args.insert(args.end(), inputs.begin(), inputs.end());
+                    args.push_back("-o");
+                    args.push_back(std::string(step.output));
+                }
+
+                auto res = catalyst::process_exec(std::move(args));
+                if (res) {
+                    int ec = res->get();
+                    if (ec != 0) {
+                        std::println(stderr, "Build failed: {} -> {} (exit code {})", step.tool, step.output, ec);
+                        std::exit(ec);
+                    }
+                } else {
+                    std::println(stderr, "Failed to execute: {}", res.error());
+                    std::exit(1);
+                }
             }
         }
     };
