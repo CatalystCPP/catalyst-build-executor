@@ -112,14 +112,7 @@ Result<void> Executor::execute() {
 
             if (std::filesystem::exists(step.output)) {
                 auto output_modtime = std::filesystem::last_write_time(step.output);
-                for (const auto &input : inputs) {
-                    if (file_changed(input, output_modtime)) {
-                        needs_rebuild = true;
-                        break;
-                    }
-                }
-
-                if (!needs_rebuild && step.depfile_inputs.has_value()) {
+                if (step.depfile_inputs.has_value()) {
                     for (const auto &dep : *step.depfile_inputs) {
                         if (file_changed(std::filesystem::path(dep), output_modtime)) {
                             needs_rebuild = true;
@@ -127,6 +120,13 @@ Result<void> Executor::execute() {
                         }
                     }
                 }
+                if (!needs_rebuild)
+                    for (const auto &input : inputs) {
+                        if (file_changed(input, output_modtime)) {
+                            needs_rebuild = true;
+                            break;
+                        }
+                    }
             } else {
                 needs_rebuild = true;
             }
@@ -134,7 +134,7 @@ Result<void> Executor::execute() {
             if (needs_rebuild) {
                 std::println("{} -> {}", step.tool, step.output);
 
-                static constexpr auto ARGS_VEC_INIT_SZ= 40;
+                static constexpr auto ARGS_VEC_INIT_SZ = 40;
                 std::vector<std::string> args;
                 args.reserve(ARGS_VEC_INIT_SZ);
                 auto add_parts = [&args](const auto &parts) {
