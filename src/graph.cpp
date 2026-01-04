@@ -1,5 +1,6 @@
 #include "cbe/graph.hpp"
 
+#include "cbe/domain.hpp"
 #include "cbe/mmap.hpp"
 #include "cbe/utility.hpp"
 
@@ -113,11 +114,6 @@ std::shared_ptr<MappedFile> parse_depfile(const std::filesystem::path &path, aut
 Result<size_t> BuildGraph::add_step(BuildStep step) {
     size_t out_id = get_or_create_node(step.output);
 
-    auto depfile_parse_callback = [this, out_id](std::string_view fn) {
-        size_t in_id = get_or_create_node(fn);
-        this->nodes_[in_id].out_edges.push_back(out_id);
-    };
-
     if (nodes_[out_id].step_id.has_value()) { // 2 different steps create the same file.
         return std::unexpected(std::format("Duplicate producer for output: {}", step.output));
     }
@@ -127,6 +123,14 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
     nodes_[out_id].step_id = step_id;
 
     if (step.tool == "cc" || step.tool == "cxx") {
+        auto depfile_parse_callback = [this, out_id, &step = steps_.back()](std::string_view fn) {
+            size_t in_id = get_or_create_node(fn);
+            this->nodes_[in_id].out_edges.push_back(out_id);
+            if (step.depfile_inputs)
+                step.depfile_inputs->emplace_back(fn);
+            else
+                step.depfile_inputs = {};
+        };
         const fs::path depfile_path = std::format("{}.d", step.output);
         if (auto mmap = parse_depfile(depfile_path, depfile_parse_callback)) {
             add_resource(mmap);

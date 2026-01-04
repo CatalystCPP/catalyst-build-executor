@@ -1,8 +1,8 @@
 #include "cbe/parser.hpp"
 
 #include "cbe/builder.hpp"
-#include "cbe/utility.hpp"
 #include "cbe/mmap.hpp" // Use our internal mmap header
+#include "cbe/utility.hpp"
 
 #include <cctype>
 #include <iostream>
@@ -44,13 +44,11 @@ Result<void> parse_step(const std::string_view line, CBEBuilder &builder) {
     if (second_pipe == std::string_view::npos) {
         return std::unexpected(std::format("Malformed step line (missing second pipe): {}", line));
     }
-
-    if (auto res = builder.add_step({
-            line.substr(0, first_pipe),                                  // step_type
-            line.substr(first_pipe + 1, second_pipe - (first_pipe + 1)), // inputs
-            line.substr(second_pipe + 1)                                 // output
-        });
-        !res) {
+    Result<void> res = builder.add_step({.tool = line.substr(0, first_pipe),
+                                         .inputs = line.substr(first_pipe + 1, second_pipe - (first_pipe + 1)),
+                                         .output = line.substr(second_pipe + 1),
+                                         .depfile_inputs = std::nullopt});
+    if (!res) {
         return std::unexpected(res.error());
     }
     return {};
