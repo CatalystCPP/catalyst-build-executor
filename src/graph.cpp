@@ -126,10 +126,9 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
         auto depfile_parse_callback = [this, out_id, &step = steps_.back()](std::string_view fn) {
             size_t in_id = get_or_create_node(fn);
             this->nodes_[in_id].out_edges.push_back(out_id);
-            if (step.depfile_inputs)
-                step.depfile_inputs->emplace_back(fn);
-            else
-                step.depfile_inputs = {};
+            if (!step.depfile_inputs)
+                step.depfile_inputs.emplace();
+            step.depfile_inputs->emplace_back(fn);
         };
         const fs::path depfile_path = std::format("{}.d", step.output);
         if (auto mmap = parse_depfile(depfile_path, depfile_parse_callback)) {
