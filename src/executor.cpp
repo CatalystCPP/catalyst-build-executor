@@ -299,7 +299,7 @@ Result<void> Executor::execute() {
                 }
 
                 if (res) {
-                    int ec = res->get();
+                    int ec = *res;
                     if (ec != 0) {
                         std::println(stderr, "Build failed: {} -> {} (exit code {})", step.tool, step.output, ec);
                         return ec;
