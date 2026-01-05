@@ -2,6 +2,7 @@
 
 #include "cbe/graph.hpp"
 
+#include <filesystem>
 #include <memory>
 
 namespace catalyst {
@@ -28,6 +29,10 @@ public:
     const Definitions &definitions() const {
         return definitions_;
     }
+
+    friend Result<void> parse(CBEBuilder &, const std::filesystem::path &);
+    friend Result<void> parse_bin(CBEBuilder &);
+    friend Result<void> emit_bin(CBEBuilder &);
 
 private:
     BuildGraph graph_;

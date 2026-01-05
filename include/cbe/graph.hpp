@@ -3,6 +3,7 @@
 #include "cbe/domain.hpp"
 #include "cbe/utility.hpp"
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +37,10 @@ public:
     }
 
     Result<std::vector<size_t>> topo_sort() const;
+
+    friend Result<void> parse(class CBEBuilder &, const std::filesystem::path &);
+    friend Result<void> parse_bin(class CBEBuilder &);
+    friend Result<void> emit_bin(class CBEBuilder &);
 
 private:
     std::vector<Node> nodes_;

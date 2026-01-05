@@ -1,5 +1,6 @@
 #include "cbe/parser.hpp"
 
+#include "cbe/binary.hpp"
 #include "cbe/builder.hpp"
 #include "cbe/mmap.hpp"
 #include "cbe/utility.hpp"
@@ -52,6 +53,10 @@ Result<void> parse_step(const std::string_view line, CBEBuilder &builder) {
 } // namespace
 
 Result<void> parse(CBEBuilder &builder, const std::filesystem::path &path) {
+    if (std::filesystem::exists(".catalyst.bin") &&
+        std::filesystem::last_write_time(".catalyst.bin") > std::filesystem::last_write_time(path)) {
+        return parse_bin(builder);
+    }
     std::string_view content;
     try {
         auto file = std::make_shared<MappedFile>(path);
@@ -91,7 +96,7 @@ Result<void> parse(CBEBuilder &builder, const std::filesystem::path &path) {
 
         start = end + 1;
     }
-    return {};
+    return emit_bin(builder);
 }
 
 } // namespace catalyst

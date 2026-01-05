@@ -1,0 +1,249 @@
+#include "cbe/binary.hpp"
+
+#include "cbe/builder.hpp"
+#include "cbe/graph.hpp"
+#include "cbe/mmap.hpp"
+
+#include <cstdint>
+#include <cstring>
+#include <fstream>
+#include <map>
+#include <memory>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+namespace catalyst {
+
+namespace {
+
+struct StringRef {
+    uint64_t offset;
+    uint64_t len;
+};
+
+class StringBuffer {
+public:
+    StringRef add(std::string_view sv) {
+        if (auto it = cache_.find(sv); it != cache_.end()) {
+            return it->second;
+        }
+        uint64_t offset = data_.size();
+        uint64_t len = sv.size();
+        data_.append(sv);
+        StringRef ref = {offset, len};
+        cache_[sv] = ref;
+        return ref;
+    }
+
+    const std::string &data() const {
+        return data_;
+    }
+
+private:
+    std::string data_;
+    std::unordered_map<std::string_view, StringRef> cache_;
+};
+
+struct BinHeader {
+    char magic[8];
+    uint64_t num_definitions;
+    uint64_t num_nodes;
+    uint64_t num_steps;
+    uint64_t strings_size;
+};
+
+struct BinDefinition {
+    StringRef key;
+    StringRef val;
+};
+
+} // namespace
+
+Result<void> parse_bin(CBEBuilder &builder) {
+    std::shared_ptr<MappedFile> file;
+    try {
+        file = std::make_shared<MappedFile>(".catalyst.bin");
+    } catch (const std::exception &e) {
+        return std::unexpected(std::format("Failed to mmap .catalyst.bin: {}", e.what()));
+    }
+
+    std::string_view content = file->content();
+    if (content.size() < sizeof(BinHeader)) {
+        return std::unexpected("Malformed .catalyst.bin: too small for header");
+    }
+
+    const BinHeader *header = reinterpret_cast<const BinHeader *>(content.data());
+#ifdef __linux__
+    if (std::memcmp(header->magic, "CATBL001", 8) != 0) {
+#elifdef __apple__
+    if (std::memcmp(header->magic, "CATBM001", 8) != 0) {
+#elifdef _WIN32 || _WIN64
+    if (std::memcmp(header->magic, "CATBW001", 8) != 0) {
+#endif
+        return std::unexpected("Invalid magic or version in .catalyst.bin");
+    }
+
+    const char *ptr = content.data() + sizeof(BinHeader);
+    const char *strings_base = content.data() + content.size() - header->strings_size;
+
+    auto get_sv = [&](StringRef ref) -> std::string_view { return {strings_base + ref.offset, ref.len}; };
+
+    // 1. Definitions
+    for (uint64_t i = 0; i < header->num_definitions; ++i) {
+        const BinDefinition *def = reinterpret_cast<const BinDefinition *>(ptr);
+        builder.add_definition(get_sv(def->key), get_sv(def->val));
+        ptr += sizeof(BinDefinition);
+    }
+
+    // 2. Nodes
+    builder.graph_.nodes_.reserve(header->num_nodes);
+    for (uint64_t i = 0; i < header->num_nodes; ++i) {
+        StringRef path_ref = *reinterpret_cast<const StringRef *>(ptr);
+        ptr += sizeof(StringRef);
+        uint64_t step_id_raw = *reinterpret_cast<const uint64_t *>(ptr);
+        ptr += sizeof(uint64_t);
+        uint64_t num_out_edges = *reinterpret_cast<const uint64_t *>(ptr);
+        ptr += sizeof(uint64_t);
+
+        std::optional<size_t> step_id = (step_id_raw == UINT64_MAX) ? std::nullopt : std::make_optional(step_id_raw);
+        std::vector<size_t> out_edges;
+        out_edges.reserve(num_out_edges);
+        for (uint64_t j = 0; j < num_out_edges; ++j) {
+            out_edges.push_back(*reinterpret_cast<const uint64_t *>(ptr));
+            ptr += sizeof(uint64_t);
+        }
+
+        std::string_view path = get_sv(path_ref);
+        builder.graph_.nodes_.push_back({path, std::move(out_edges), step_id});
+        builder.graph_.index_.emplace(path, i);
+    }
+
+    // 3. Steps
+    builder.graph_.steps_.reserve(header->num_steps);
+    for (uint64_t i = 0; i < header->num_steps; ++i) {
+        StringRef tool_ref = *reinterpret_cast<const StringRef *>(ptr);
+        ptr += sizeof(StringRef);
+        StringRef inputs_ref = *reinterpret_cast<const StringRef *>(ptr);
+        ptr += sizeof(StringRef);
+        StringRef output_ref = *reinterpret_cast<const StringRef *>(ptr);
+        ptr += sizeof(StringRef);
+        uint64_t depfile_count = *reinterpret_cast<const uint64_t *>(ptr);
+        ptr += sizeof(uint64_t);
+
+        std::optional<std::vector<std::string_view>> depfile_inputs;
+        if (depfile_count != UINT64_MAX) {
+            depfile_inputs.emplace();
+            depfile_inputs->reserve(depfile_count);
+            for (uint64_t j = 0; j < depfile_count; ++j) {
+                StringRef ref = *reinterpret_cast<const StringRef *>(ptr);
+                ptr += sizeof(StringRef);
+                depfile_inputs->push_back(get_sv(ref));
+            }
+        }
+
+        builder.graph_.steps_.push_back(
+            {get_sv(tool_ref), get_sv(inputs_ref), get_sv(output_ref), std::move(depfile_inputs)});
+    }
+
+    builder.add_resource(file);
+    return {};
+}
+
+Result<void> emit_bin(CBEBuilder &builder) {
+    std::ofstream out(".catalyst.bin", std::ios::binary);
+    if (!out) {
+        return std::unexpected("Failed to open .catalyst.bin for writing");
+    }
+
+    StringBuffer sb;
+    const auto &definitions = builder.definitions();
+    const auto &nodes = builder.graph().nodes();
+    const auto &steps = builder.graph().steps();
+
+    std::vector<BinDefinition> bin_defs;
+    for (const auto &[k, v] : definitions) {
+        bin_defs.push_back({sb.add(k), sb.add(v)});
+    }
+
+    // Nodes and steps are variable length, we'll write them in two passes or buffer.
+    // Let's buffer to calculate sizes.
+    std::vector<char> nodes_buf;
+    for (const auto &node : nodes) {
+        StringRef path_ref = sb.add(node.path);
+        nodes_buf.insert(nodes_buf.end(),
+                         reinterpret_cast<const char *>(&path_ref),
+                         reinterpret_cast<const char *>(&path_ref) + sizeof(StringRef));
+
+        uint64_t step_id = node.step_id.value_or(UINT64_MAX);
+        nodes_buf.insert(nodes_buf.end(),
+                         reinterpret_cast<const char *>(&step_id),
+                         reinterpret_cast<const char *>(&step_id) + sizeof(uint64_t));
+
+        uint64_t num_out_edges = node.out_edges.size();
+        nodes_buf.insert(nodes_buf.end(),
+                         reinterpret_cast<const char *>(&num_out_edges),
+                         reinterpret_cast<const char *>(&num_out_edges) + sizeof(uint64_t));
+
+        for (size_t edge : node.out_edges) {
+            uint64_t edge_u64 = edge;
+            nodes_buf.insert(nodes_buf.end(),
+                             reinterpret_cast<const char *>(&edge_u64),
+                             reinterpret_cast<const char *>(&edge_u64) + sizeof(uint64_t));
+        }
+    }
+
+    std::vector<char> steps_buf;
+    for (const auto &step : steps) {
+        StringRef tool_ref = sb.add(step.tool);
+        StringRef inputs_ref = sb.add(step.inputs);
+        StringRef output_ref = sb.add(step.output);
+
+        steps_buf.insert(steps_buf.end(),
+                         reinterpret_cast<const char *>(&tool_ref),
+                         reinterpret_cast<const char *>(&tool_ref) + sizeof(StringRef));
+        steps_buf.insert(steps_buf.end(),
+                         reinterpret_cast<const char *>(&inputs_ref),
+                         reinterpret_cast<const char *>(&inputs_ref) + sizeof(StringRef));
+        steps_buf.insert(steps_buf.end(),
+                         reinterpret_cast<const char *>(&output_ref),
+                         reinterpret_cast<const char *>(&output_ref) + sizeof(StringRef));
+
+        uint64_t depfile_count = step.depfile_inputs ? step.depfile_inputs->size() : UINT64_MAX;
+        steps_buf.insert(steps_buf.end(),
+                         reinterpret_cast<const char *>(&depfile_count),
+                         reinterpret_cast<const char *>(&depfile_count) + sizeof(uint64_t));
+
+        if (step.depfile_inputs) {
+            for (const auto &di : *step.depfile_inputs) {
+                StringRef ref = sb.add(di);
+                steps_buf.insert(steps_buf.end(),
+                                 reinterpret_cast<const char *>(&ref),
+                                 reinterpret_cast<const char *>(&ref) + sizeof(StringRef));
+            }
+        }
+    }
+
+    BinHeader header;
+#ifdef __linux__
+    std::memcpy(header.magic, "CATBL001", 8);
+#elifdef __apple__
+    std::memcpy(header.magic, "CATBM001", 8);
+#elifdef _WIN32 || _WIN64
+    std::memcpy(header.magic, "CATBW001", 8);
+#endif
+    header.num_definitions = bin_defs.size();
+    header.num_nodes = nodes.size();
+    header.num_steps = steps.size();
+    header.strings_size = sb.data().size();
+
+    out.write(reinterpret_cast<const char *>(&header), sizeof(BinHeader));
+    out.write(reinterpret_cast<const char *>(bin_defs.data()), bin_defs.size() * sizeof(BinDefinition));
+    out.write(nodes_buf.data(), nodes_buf.size());
+    out.write(steps_buf.data(), steps_buf.size());
+    out.write(sb.data().data(), sb.data().size());
+
+    return {};
+}
+
+} // namespace catalyst
