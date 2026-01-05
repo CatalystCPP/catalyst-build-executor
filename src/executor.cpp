@@ -5,15 +5,18 @@
 #include "cbe/utility.hpp"
 
 #include <condition_variable>
+#include <cstdio>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <print>
 #include <queue>
 #include <ranges>
 #include <string>
+#include <sys/mman.h>
 #include <vector>
 
 namespace catalyst {
@@ -235,6 +238,7 @@ Result<void> Executor::execute() {
 
                 static constexpr auto ARGS_VEC_INIT_SZ = 40;
                 std::vector<std::string> args;
+                std::filesystem::path rsp_cleanup_path;
                 args.reserve(ARGS_VEC_INIT_SZ);
                 auto add_parts = [&args](const auto &parts) {
                     args.reserve(args.size() + parts.size());
@@ -261,7 +265,17 @@ Result<void> Executor::execute() {
                     args.push_back(std::string(step.output));
                 } else if (step.tool == "ld") {
                     add_parts(cxx_vec);
-                    args.insert(args.end(), inputs.begin(), inputs.end());
+                    constexpr auto INPUT_SZ = 50;
+                    if (inputs.size() > INPUT_SZ) {
+                        rsp_cleanup_path = std::filesystem::path(step.output).replace_extension(".rsp");
+                        std::ofstream rsp_file(rsp_cleanup_path);
+                        for (const auto &input : inputs) {
+                            rsp_file << input << '\n';
+                        }
+                        args.push_back(std::string("@") + rsp_cleanup_path.string());
+                    } else {
+                        args.insert(args.end(), inputs.begin(), inputs.end());
+                    }
                     args.push_back("-o");
                     args.push_back(std::string(step.output));
                     add_parts(ldflags_vec);
@@ -278,6 +292,12 @@ Result<void> Executor::execute() {
                 }
 
                 auto res = catalyst::process_exec(std::move(args));
+
+                if (!rsp_cleanup_path.empty()) {
+                    std::error_code ec;
+                    std::filesystem::remove(rsp_cleanup_path, ec);
+                }
+
                 if (res) {
                     int ec = res->get();
                     if (ec != 0) {
