@@ -145,8 +145,25 @@ Result<void> parse_bin(CBEBuilder &builder) {
             }
         }
 
+        std::vector<std::string_view> parsed_inputs;
+        std::string_view remaining = get_sv(inputs_ref);
+        while (!remaining.empty()) {
+            size_t comma_pos = remaining.find(',');
+            std::string_view in_path;
+            if (comma_pos == std::string_view::npos) {
+                in_path = remaining;
+                remaining = {};
+            } else {
+                in_path = remaining.substr(0, comma_pos);
+                remaining = remaining.substr(comma_pos + 1);
+            }
+            if (!in_path.empty()) {
+                parsed_inputs.push_back(in_path);
+            }
+        }
+
         builder.graph_.steps_.push_back(
-            {get_sv(tool_ref), get_sv(inputs_ref), get_sv(output_ref), std::move(depfile_inputs)});
+            {get_sv(tool_ref), get_sv(inputs_ref), get_sv(output_ref), std::move(depfile_inputs), std::move(parsed_inputs)});
     }
 
     builder.add_resource(file);
