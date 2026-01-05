@@ -27,12 +27,13 @@ size_t BuildGraph::get_or_create_node(std::string_view path) {
     return id;
 }
 
-void parse_depfile(const std::filesystem::path &path, auto callback) {
+void parse_depfile(BuildGraph &graph, const std::filesystem::path &path, auto callback) {
     if (!fs::exists(path)) {
         return;
     }
-    MappedFile map{path};
-    std::string_view content = map.content();
+    auto map = std::make_shared<MappedFile>(path);
+    graph.add_resource(map);
+    std::string_view content = map->content();
 
     if (content.empty())
         return;
@@ -129,7 +130,7 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
             step.depfile_inputs->emplace_back(fn);
         };
         const fs::path depfile_path = std::format("{}.d", step.output);
-        parse_depfile(depfile_path, depfile_parse_callback);
+        parse_depfile(*this, depfile_path, depfile_parse_callback);
     } else if (step.tool == "ld" || step.tool == "sld" || step.tool == "ar") {
         // TODO: parse .rsp file
     }
