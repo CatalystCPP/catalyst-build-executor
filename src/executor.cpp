@@ -55,10 +55,10 @@ Result<void> Executor::emit_compdb() {
     const std::string ldflags = get_def("ldflags");
     const std::string ldlibs = get_def("ldlibs");
 
-    const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector>();
-    const std::vector cxx_vec = std::ranges::views::lazy_split(cxx, ' ') | std::ranges::to<std::vector>();
-    const std::vector cflags_vec = std::ranges::views::split(cflags, ' ') | std::ranges::to<std::vector>();
-    const std::vector cxxflags_vec = std::ranges::views::split(cxxflags, ' ') | std::ranges::to<std::vector>();
+    const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector cxx_vec = std::ranges::views::split(cxx, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector cflags_vec = std::ranges::views::split(cflags, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector cxxflags_vec = std::ranges::views::split(cxxflags, ' ') | std::ranges::to<std::vector<std::string>>();
 
     using json = nlohmann::json;
     json compdb = json::array();
@@ -147,12 +147,12 @@ Result<void> Executor::execute() {
     const std::string ldflags = get_def("ldflags");
     const std::string ldlibs = get_def("ldlibs");
 
-    const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector>();
-    const std::vector cxx_vec = std::ranges::views::lazy_split(cxx, ' ') | std::ranges::to<std::vector>();
-    const std::vector cflags_vec = std::ranges::views::split(cflags, ' ') | std::ranges::to<std::vector>();
-    const std::vector cxxflags_vec = std::ranges::views::split(cxxflags, ' ') | std::ranges::to<std::vector>();
-    const std::vector ldflags_vec = std::ranges::views::split(ldflags, ' ') | std::ranges::to<std::vector>();
-    const std::vector ldlibs_vec = std::ranges::views::split(ldlibs, ' ') | std::ranges::to<std::vector>();
+    const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector cxx_vec = std::ranges::views::split(cxx, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector cflags_vec = std::ranges::views::split(cflags, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector cxxflags_vec = std::ranges::views::split(cxxflags, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector ldflags_vec = std::ranges::views::split(ldflags, ' ') | std::ranges::to<std::vector<std::string>>();
+    const std::vector ldlibs_vec = std::ranges::views::split(ldlibs, ' ') | std::ranges::to<std::vector<std::string>>();
 
     // Build in-degrees
     std::vector<int> in_degrees(build_graph.nodes().size(), 0);
