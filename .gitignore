@@ -3,3 +3,4 @@ build
 .cache
 GEMINI.md
 compile_commands.json
+build_tests
