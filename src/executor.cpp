@@ -241,13 +241,13 @@ Result<void> Executor::execute() {
 
             if (needs_rebuild) {
                 if (config.dry_run) {
-                    std::println("[DRY RUN] {} -> {}", step.tool, step.output);
+                    std::println("\033[1m[DRY RUN]\033[0m \033[1;32m{}\033[0m\t->\t{}", step.tool, step.output);
                     return 0; // Simulate success
                 }
 
                 {
                     std::lock_guard lock(mtx);
-                    std::println("{} -> {}", step.tool, step.output);
+                    std::println("\033[1m[{}/{}]\033[0m \033[1;32m{}\033[0m\t-> {}", completed_count + 1, total_nodes, step.tool, step.output);
                 }
 
                 static constexpr auto ARGS_VEC_INIT_SZ = 40;
