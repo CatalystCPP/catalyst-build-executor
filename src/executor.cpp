@@ -188,21 +188,28 @@ Result<void> Executor::execute() {
 
             if (std::filesystem::exists(step.output)) {
                 auto output_modtime = std::filesystem::last_write_time(step.output);
-                if (step.depfile_inputs.has_value()) {
-                    for (const auto &dep : *step.depfile_inputs) {
-                        if (file_changed(std::filesystem::path(dep), output_modtime)) {
-                            needs_rebuild = true;
-                            break;
+
+                if (file_changed("catalyst.build", output_modtime)) {
+                    needs_rebuild = true;
+                }
+
+                if (!needs_rebuild) {
+                    if (step.depfile_inputs.has_value()) {
+                        for (const auto &dep : *step.depfile_inputs) {
+                            if (file_changed(std::filesystem::path(dep), output_modtime)) {
+                                needs_rebuild = true;
+                                break;
+                            }
                         }
                     }
-                }
-                if (!needs_rebuild)
+                    // this is our way of making sure that the .d file isn't stale
                     for (const auto &input : inputs) {
                         if (file_changed(input, output_modtime)) {
                             needs_rebuild = true;
                             break;
                         }
                     }
+                }
             } else {
                 needs_rebuild = true;
             }
