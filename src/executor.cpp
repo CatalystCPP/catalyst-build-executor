@@ -4,6 +4,7 @@
 #include "cbe/process_exec.hpp"
 #include "cbe/utility.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdio>
@@ -194,7 +195,7 @@ Result<void> Executor::execute() {
 
     std::mutex mtx;
     std::condition_variable cv_ready;
-    size_t completed_count = 0;
+    std::atomic<size_t> completed_count = 0;
     size_t total_nodes = build_graph.nodes().size();
     bool error_occurred = false;
     size_t active_workers = 0;
@@ -245,10 +246,11 @@ Result<void> Executor::execute() {
                     return 0; // Simulate success
                 }
 
-                {
-                    std::lock_guard lock(mtx);
-                    std::println("\033[1m[{}/{}]\033[0m \033[1;32m{}\033[0m\t-> {}", completed_count + 1, total_nodes, step.tool, step.output);
-                }
+                std::println("\033[1m[{}/{}]\033[0m \033[1;32m{}\033[0m\t-> {}",
+                             completed_count + 1,
+                             total_nodes,
+                             step.tool,
+                             step.output);
 
                 static constexpr auto ARGS_VEC_INIT_SZ = 40;
                 std::vector<std::string> args;
@@ -359,20 +361,37 @@ Result<void> Executor::execute() {
                 std::lock_guard lock(mtx);
                 active_workers--;
 
+                size_t new_work_count = 0;
+
                 if (result != 0) {
                     error_occurred = true;
                     completed_count = total_nodes; // Force exit
                 } else {
-                    completed_count++;
+                    completed_count.fetch_add(1, std::memory_order_relaxed);
                     const auto &node = build_graph.nodes()[node_idx];
                     for (size_t neighbor : node.out_edges) {
                         in_degrees[neighbor]--;
                         if (in_degrees[neighbor] == 0) {
                             ready_queue.push(neighbor);
+                            new_work_count++;
                         }
                     }
                 }
-                cv_ready.notify_all();
+
+                bool build_finished = (completed_count == total_nodes);
+                bool stall_detected = (active_workers == 0);
+                constexpr auto TUNABLE__notify_all_criteria = 10;
+                if (build_finished || error_occurred || stall_detected) {
+                    cv_ready.notify_all();
+                } else if (new_work_count == 1) {
+                    cv_ready.notify_one();
+                } else if (new_work_count >= TUNABLE__notify_all_criteria) {
+                    cv_ready.notify_all();
+                } else {
+                    for (size_t ii = 0; ii < new_work_count; ++ii) {
+                        cv_ready.notify_one();
+                    }
+                }
             }
         }
     };
