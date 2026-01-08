@@ -142,6 +142,41 @@ def generate_ninja_manifest(source_files):
         f.write(f"\nbuild build/heavy_app: ld {all_objs}\n")
 
 
+
+def generate_makefile(source_files):
+    manifest_path = os.path.join(ROOT_DIR, "Makefile")
+    with open(manifest_path, "w") as f:
+        f.write("CXX = clang++\n")
+        f.write("CXXFLAGS = -std=c++20 -O0 -Iinclude\n")
+        f.write("LDFLAGS = \n")
+        f.write("\n")
+
+        obj_files = []
+        for src in source_files:
+            obj_name = f"build/{src}.o"
+            obj_files.append(obj_name)
+
+        main_obj = "build/main.cpp.o"
+        obj_files.append(main_obj)
+
+        all_objs = " ".join(obj_files)
+
+        f.write(f"build/heavy_app: {all_objs}\n")
+        f.write(f"\t$(CXX) $(LDFLAGS) {all_objs} -o $@\n\n")
+
+        for src in source_files:
+            obj_name = f"build/{src}.o"
+            f.write(f"{obj_name}: src/{src}\n")
+            f.write(f"\t$(CXX) $(CXXFLAGS) -MMD -MP -MF {obj_name}.d -c $< -o $@\n")
+
+        f.write(f"{main_obj}: src/main.cpp\n")
+        f.write(f"\t$(CXX) $(CXXFLAGS) -MMD -MP -MF {main_obj}.d -c $< -o $@\n")
+
+        f.write("\n")
+        deps = [o + ".d" for o in obj_files]
+        f.write("-include " + " ".join(deps) + "\n")
+
+
 if __name__ == "__main__":
     ensure_dirs()
     print("Generating headers...")
@@ -154,5 +189,8 @@ if __name__ == "__main__":
 
     print("Generating ninja manifest...")
     generate_ninja_manifest(srcs)
+
+    print("Generating makefile...")
+    generate_makefile(srcs)
 
     print("Done.")
