@@ -1,0 +1,6 @@
+manifest:
+  name: cbe_benchmark
+  provides: cbe_benchmark
+  description: CBE with Benchmarking Flags Enabled
+  tooling:
+    CXXFLAGS: --std=c++23 -Wall -Wextra -O0 -g -fno-omit-frame-pointer

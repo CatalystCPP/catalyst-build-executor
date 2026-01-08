@@ -4,8 +4,8 @@ manifest:
   name: cbe
   type: BINARY
   version: 0.1.0
-  description: Your Description Goes Here
-  provides: ""
+  description: The Catalyst Build Executor
+  provides: cbe
   tooling:
     CC: clang
     CXX: clang++

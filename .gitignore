@@ -4,3 +4,7 @@ build
 GEMINI.md
 compile_commands.json
 build_tests
+benchmarks/heavy_repo
+benchmarks/perf.data
+benchmarks/perf.data.*
+benchmarks/*graph*.svg
