@@ -476,6 +476,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#opaque-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opaque Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -684,6 +695,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#opaque-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opaque Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -723,8 +745,9 @@
 
 
 <h1 id="build-file-schema">Build File Schema</h1>
-<p>The <code>catalyst.build</code> manifest defines the build graphs and arguments for build rules.
-It uses a strict, pipe-delimited, 3-column format designed for efficient parsing.</p>
+<p>The <code>catalyst.build</code> manifest defines the build graphs and arguments for build
+rules. It uses a strict, pipe-delimited, 3-column format designed for efficient
+parsing.</p>
 <h2 id="structure">Structure</h2>
 <p>The file can have either of: Definitions or Build Steps.</p>
 <h3 id="definitions">Definitions</h3>
@@ -786,7 +809,8 @@ It uses a strict, pipe-delimited, 3-column format designed for efficient parsing
 <li><code>&lt;output_file&gt;</code>: The path to the generated file.</li>
 </ul>
 <h4 id="toolchain-mapping">Toolchain Mapping</h4>
-<p>CBE maps specific step types to command templates. It strictly enforces certain behaviors (like dependency generation) by injecting flags.</p>
+<p>CBE maps specific step types to command templates. It strictly enforces certain
+behaviors (like dependency generation) by injecting flags.</p>
 <table>
 <thead>
 <tr>
@@ -823,6 +847,19 @@ It uses a strict, pipe-delimited, 3-column format designed for efficient parsing
 </tr>
 </tbody>
 </table>
+<h4 id="opaque-dependencies">Opaque Dependencies</h4>
+<p>Inputs prefixed with <code>!</code> are treated as "opaque dependencies".
+These inputs are tracked for changes to trigger rebuilds but are not passed as
+arguments to the build tool.</p>
+<p>Example: <code>cxx|src/main.cpp,!resource.png|build/main.o</code></p>
+<ul>
+<li><code>src/main.cpp</code> is passed to the compiler.</li>
+<li><code>resource.png</code> is not passed to the compiler, but modifying it will trigger
+a rebuild of <code>build/main.o</code>.</li>
+</ul>
+<p>This is useful for implicit dependencies (like configuration files or binary
+content) that affect the build output but aren't direct inputs to the command
+line.</p>
 <p>Important Notes(See <a href="../../implementation/overview/">Implementation Details</a> for more info):</p>
 <ol>
 <li>Dependency Tracking (<code>.d</code>): For <code>cc</code> and <code>cxx</code>, <strong>do not</strong> manually add <code>-MMD</code> or <code>-MF</code> to your <code>$cflags</code>/<code>$cxxflags</code>. CBE automatically injects these to manage incremental builds correctly.</li>
@@ -835,7 +872,7 @@ DEF|cflags|
 DEF|cxxflags|-std=c++20 -O3
 DEF|ldflags|
 DEF|ldlibs|
-cxx|src/main.cpp|build/main.o
+cxx|src/main.cpp,!resources/helpmessage.txt|build/main.o
 cxx|src/net.cpp|build/net.o
 ld|build/main.o,build/net.o|build/app
 </code></pre>
