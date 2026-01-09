@@ -132,7 +132,14 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
         }
 
         if (!in_path.empty()) {
-            step.parsed_inputs.push_back(in_path);
+            if (in_path.starts_with('!')) {
+                auto opaque_path = in_path.substr(1);
+                if (!step.opaque_inputs)
+                    step.opaque_inputs.emplace();
+                step.opaque_inputs->push_back(opaque_path);
+            } else {
+                step.parsed_inputs.push_back(in_path);
+            }
         }
     }
 
@@ -158,6 +165,14 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
     for (const auto &in_path : step.parsed_inputs) {
         size_t in_id = get_or_create_node(in_path);
         nodes_[in_id].out_edges.push_back(out_id);
+    }
+
+    // Iterate over opaque_inputs to add edges
+    if (step.opaque_inputs) {
+        for (const auto &in_path : *step.opaque_inputs) {
+            size_t in_id = get_or_create_node(in_path);
+            nodes_[in_id].out_edges.push_back(out_id);
+        }
     }
 
     return step_id;

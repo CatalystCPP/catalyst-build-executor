@@ -252,11 +252,21 @@ Result<void> Executor::execute() {
                             }
                         }
                     }
+                    if (!needs_rebuild && step.opaque_inputs.has_value()) {
+                        for (const auto &opaque : *step.opaque_inputs) {
+                            if (stat_cache.changed_since(std::filesystem::path(opaque), output_modtime)) {
+                                needs_rebuild = true;
+                                break;
+                            }
+                        }
+                    }
                     // this is our way of making sure that the .d file isn't stale
-                    for (const auto &input : inputs) {
-                        if (stat_cache.changed_since(input, output_modtime)) {
-                            needs_rebuild = true;
-                            break;
+                    if (!needs_rebuild) {
+                        for (const auto &input : inputs) {
+                            if (stat_cache.changed_since(input, output_modtime)) {
+                                needs_rebuild = true;
+                                break;
+                            }
                         }
                     }
                 }

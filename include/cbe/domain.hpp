@@ -11,6 +11,7 @@ struct BuildStep {
     std::string_view tool;
     std::string_view inputs; // Comma-separated list
     std::string_view output;
+    std::optional<std::vector<std::string_view>> opaque_inputs = std::nullopt;
     std::optional<std::vector<std::string_view>> depfile_inputs = std::nullopt;
     std::vector<std::string_view> parsed_inputs;
 };
