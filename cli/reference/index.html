@@ -526,6 +526,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../implementation/work_estimate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work Estimate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -634,6 +662,11 @@
 <td><code>catalyst.build</code>.</td>
 </tr>
 <tr>
+<td><code>-e &lt;estimate&gt;</code></td>
+<td>Use <code>&lt;estimate&gt;</code> as the estimates file.</td>
+<td><code>catalyst.estimates</code>.</td>
+</tr>
+<tr>
 <td><code>-j, --jobs &lt;N&gt;</code></td>
 <td>Set the number of parallel jobs.</td>
 <td>Maximum number of available hardware threads (<code>nproc</code>).</td>
@@ -651,6 +684,11 @@
 <tr>
 <td><code>--compdb</code></td>
 <td>Generate a <code>compile_commands.json</code> file for integration with clangd and other IDEs.</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td><code>--graph</code></td>
+<td>Print a <code>.dot</code> file to stdout for build graph inspection. Files that need rebuild are colored green.</td>
 <td>N/A</td>
 </tr>
 </tbody>

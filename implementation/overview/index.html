@@ -12,6 +12,8 @@
         <link rel="prev" href="../../concepts/manifest/">
       
       
+        <link rel="next" href="../work_estimate/">
+      
       
         
       
@@ -621,10 +623,49 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#work-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../work_estimate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work Estimate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -791,6 +832,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#work-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -853,6 +905,8 @@ dependency files. This reduces the number of system calls and allows the OS to m
 <p>A thread pool consumes tasks from a ready-queue. This queue is populated by a topological sort of the build graph.</p>
 <h3 id="stat-caching">Stat Caching</h3>
 <p>CBE populates a stat cache to ensure that "popular" dependencies don't invoke unnecesary stat syscalls.</p>
+<h2 id="work-estimation">Work Estimation</h2>
+<p>CBE supports prioritizing tasks based on estimated costs. See <a href="../work_estimate/">Work Estimates</a> for details.</p>
 
 
 
