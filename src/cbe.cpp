@@ -15,6 +15,7 @@ void print_help() {
     std::println("  -h, --help       Show this help message");
     std::println("  -v, --version    Show version");
     std::println("  -d <dir>         Change working directory before doing anything");
+    std::println("  -e <estimate>    Use <estimate> as the estimate file (default: catalyst.estimates)");
     std::println("  -f <file>        Use <file> as the build manifest (default: catalyst.build)");
     std::println("  -j, --jobs <N>   Set number of parallel jobs (default: auto)");
     std::println("  --dry-run        Print commands without executing them");
@@ -31,7 +32,7 @@ int main(const int argc, const char *const *argv) {
     catalyst::ExecutorConfig config;
     bool compdb = false;
     bool graph = false;
-    std::string input_path = "catalyst.build";
+    std::string input_path = "catalyst.build", estimates_file = "catalyst.estimates";
     std::filesystem::path work_dir = ".";
 
     for (int i = 1; i < argc; ++i) {
@@ -57,6 +58,15 @@ int main(const int argc, const char *const *argv) {
                 i++;
             } else {
                 std::println(std::cerr, "Missing argument for -f");
+                return 1;
+            }
+        } else if (arg == "-e") {
+            if (i + 1 < argc) {
+                estimates_file = argv[i + 1];
+                config.estimates_file = estimates_file;
+                i++;
+            } else {
+                std::println(std::cerr, "Missing argument for -e");
                 return 1;
             }
         } else if (arg == "--dry-run") {
@@ -101,7 +111,7 @@ int main(const int argc, const char *const *argv) {
     catalyst::CBEBuilder builder;
 
     if (!std::filesystem::exists(input_path)) {
-        std::println(std::cerr, "Build File: {} does not exist.\n", input_path);
+        std::println(std::cerr, "Build File: {} does not exist.", input_path);
         return 1;
     }
     if (std::filesystem::is_symlink(input_path)) {

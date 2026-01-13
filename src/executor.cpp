@@ -51,6 +51,7 @@ bool is_newer(const std::filesystem::path &new_file, const std::filesystem::path
 }
 
 Executor::Executor(CBEBuilder &&builder, ExecutorConfig config) : builder(std::move(builder)), config(config) {
+    estimator = std::make_unique<WorkEstimate>(config.estimates_file);
 }
 
 Result<void> Executor::clean() {
@@ -268,10 +269,27 @@ Result<void> Executor::execute() {
         }
     }
 
-    std::queue<size_t> ready_queue;
+    struct Task {
+        size_t node_idx;
+        size_t estimate;
+        bool operator<(const Task &other) const {
+            return estimate < other.estimate;
+        }
+    };
+    std::priority_queue<Task> ready_queue;
+
+    auto push_ready = [&](size_t idx) {
+        size_t est = 0;
+        const auto &node = build_graph.nodes()[idx];
+        if (node.step_id.has_value()) {
+            est = estimator->get_work_estimate(build_graph.steps()[*node.step_id].output);
+        }
+        ready_queue.push({.node_idx = idx, .estimate = est});
+    };
+
     for (size_t i = 0; i < in_degrees.size(); ++i) {
         if (in_degrees[i] == 0) {
-            ready_queue.push(i);
+            push_ready(i);
         }
     }
 
@@ -435,7 +453,7 @@ Result<void> Executor::execute() {
                     return;
                 }
 
-                node_idx = ready_queue.front();
+                node_idx = ready_queue.top().node_idx;
                 ready_queue.pop();
                 active_workers++;
             }
@@ -457,7 +475,7 @@ Result<void> Executor::execute() {
                     for (size_t neighbor : node.out_edges) {
                         in_degrees[neighbor]--;
                         if (in_degrees[neighbor] == 0) {
-                            ready_queue.push(neighbor);
+                            push_ready(neighbor);
                             new_work_count++;
                         }
                     }
