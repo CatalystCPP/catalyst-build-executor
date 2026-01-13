@@ -3,7 +3,6 @@
 #include "cbe/builder.hpp"
 #include "cbe/process_exec.hpp"
 #include "cbe/utility.hpp"
-#include "nlohmann/detail/json_custom_base_class.hpp"
 
 #include <atomic>
 #if FF_cbe__profiling
@@ -31,15 +30,7 @@
 
 namespace catalyst {
 
-bool file_changed_since(const std::filesystem::path &input_file, const auto &out_mod_time) {
-    std::error_code ec;
-    auto in_time = std::filesystem::last_write_time(input_file, ec);
-    if (ec)
-        return true;
-    return in_time >= out_mod_time;
-}
-
-bool is_newer(const std::filesystem::path &new_file, const std::filesystem::path &old_file) {
+bool isNewer(const std::filesystem::path &new_file, const std::filesystem::path &old_file) {
     std::error_code ec;
     auto new_time = std::filesystem::last_write_time(new_file, ec);
     if (ec)
@@ -50,7 +41,7 @@ bool is_newer(const std::filesystem::path &new_file, const std::filesystem::path
     return new_time > old_time;
 }
 
-Executor::Executor(CBEBuilder &&builder, ExecutorConfig config) : builder(std::move(builder)), config(config) {
+Executor::Executor(CBEBuilder &&builder, const ExecutorConfig &config) : builder(std::move(builder)), config(config) {
     estimator = std::make_unique<WorkEstimate>(config.estimates_file);
 }
 
@@ -78,37 +69,37 @@ Result<void> Executor::clean() {
 }
 
 [[clang::always_inline]]
-bool inline Executor::needs_rebuild(const BuildStep &step, StatCache &stat_cache) {
-    if (std::filesystem::exists(step.output)) {
-        auto output_modtime = std::filesystem::last_write_time(step.output);
+bool inline Executor::needs_rebuild(const BuildStep &step, StatCache &stat_cache) const {
+    if (!std::filesystem::exists(step.output))
+        return true;
 
-        if (stat_cache.changed_since(config.build_file, output_modtime)) {
-            return true;
-        }
+    auto output_modtime = std::filesystem::last_write_time(step.output);
 
-        if (step.depfile_inputs.has_value()) {
-            for (const auto &dep : *step.depfile_inputs) {
-                if (stat_cache.changed_since(std::filesystem::path(dep), output_modtime)) {
-                    return true;
-                }
-            }
-        }
-        if (step.opaque_inputs.has_value()) {
-            for (const auto &opaque : *step.opaque_inputs) {
-                if (stat_cache.changed_since(std::filesystem::path(opaque), output_modtime)) {
-                    return true;
-                }
-            }
-        }
-        // this is our way of making sure that the .d file isn't stale
-        for (const auto &input : step.parsed_inputs) {
-            if (stat_cache.changed_since(input, output_modtime)) {
+    if (stat_cache.changed_since(config.build_file, output_modtime)) {
+        return true;
+    }
+
+    if (step.depfile_inputs.has_value()) {
+        for (const auto &dep : *step.depfile_inputs) {
+            if (stat_cache.changed_since(std::filesystem::path(dep), output_modtime)) {
                 return true;
             }
         }
-        return false;
     }
-    return true;
+    if (step.opaque_inputs.has_value()) {
+        for (const auto &opaque : *step.opaque_inputs) {
+            if (stat_cache.changed_since(std::filesystem::path(opaque), output_modtime)) {
+                return true;
+            }
+        }
+    }
+    // this is our way of making sure that the .d file isn't stale
+    for (const auto &input : step.parsed_inputs) {
+        if (stat_cache.changed_since(input, output_modtime)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 Result<void> Executor::emit_graph() {
@@ -145,10 +136,11 @@ Result<void> Executor::emit_graph() {
 Result<void> Executor::emit_compdb() {
     catalyst::BuildGraph build_graph = builder.emit_graph();
     std::vector<size_t> order;
-    if (auto res = build_graph.topo_sort(); !res)
+    if (auto res = build_graph.topo_sort(); !res) {
         return std::unexpected(res.error());
-    else
+    } else {
         order = *res;
+    }
 
     const auto &defs = builder.definitions();
     auto get_def = [&](std::string_view key) -> std::string {
@@ -162,8 +154,6 @@ Result<void> Executor::emit_compdb() {
     const std::string cxx = get_def("cxx");
     const std::string cxxflags = get_def("cxxflags");
     const std::string cflags = get_def("cflags");
-    const std::string ldflags = get_def("ldflags");
-    const std::string ldlibs = get_def("ldlibs");
 
     const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector<std::string>>();
     const std::vector cxx_vec = std::ranges::views::split(cxx, ' ') | std::ranges::to<std::vector<std::string>>();
@@ -196,25 +186,26 @@ Result<void> Executor::emit_compdb() {
             }
         };
 
+        constexpr static size_t extra_md_reserves = 7;
         if (step.tool == "cc") {
             add_parts(cc_vec);
             add_parts(cflags_vec);
-            args.reserve(args.size() + inputs.size() + 7);
+            args.reserve(args.size() + inputs.size() + extra_md_reserves);
             args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
             for (const auto &in : inputs)
                 args.emplace_back(in);
-            args.push_back("-o");
-            args.push_back(std::string(step.output));
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
         } else if (step.tool == "cxx") {
             add_parts(cxx_vec);
             add_parts(cxxflags_vec);
-            args.reserve(args.size() + inputs.size() + 7);
+            args.reserve(args.size() + inputs.size() + extra_md_reserves);
             args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
             args.reserve(args.size() + inputs.size());
             for (const auto &in : inputs)
                 args.emplace_back(in);
-            args.push_back("-o");
-            args.push_back(std::string(step.output));
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
         }
 
         json entry;
@@ -316,6 +307,7 @@ Result<void> Executor::execute() {
         return {};
 
     auto process_step = [&](size_t node_idx) {
+        // NOLINTBEGIN(performance-avoid-endl)
         const auto &node = build_graph.nodes()[node_idx];
         if (node.step_id.has_value()) {
             const auto &step = build_graph.steps()[*node.step_id];
@@ -355,21 +347,21 @@ Result<void> Executor::execute() {
                     args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
                     for (const auto &in : inputs)
                         args.emplace_back(in);
-                    args.push_back("-o");
-                    args.push_back(std::string(step.output));
+                    args.emplace_back("-o");
+                    args.emplace_back(step.output);
                 } else if (step.tool == "cxx") {
                     add_parts(cxx_vec);
                     add_parts(cxxflags_vec);
                     args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
                     for (const auto &in : inputs)
                         args.emplace_back(in);
-                    args.push_back("-o");
-                    args.push_back(std::string(step.output));
+                    args.emplace_back("-o");
+                    args.emplace_back(step.output);
                 } else if (step.tool == "ld") {
                     add_parts(cxx_vec);
                     static constexpr auto TUNABLE__INPUT_SZ = 50;
                     std::filesystem::path rsp_path = std::filesystem::path(step.output).replace_extension(".rsp");
-                    if (std::filesystem::exists(rsp_path) && is_newer(rsp_path, config.build_file)) {
+                    if (std::filesystem::exists(rsp_path) && isNewer(rsp_path, config.build_file)) {
                         args.push_back(std::string("@") + rsp_path.string());
                     } else if (inputs.size() > TUNABLE__INPUT_SZ) {
                         std::string rsp_content;
@@ -386,8 +378,8 @@ Result<void> Executor::execute() {
                         for (const auto &in : inputs)
                             args.emplace_back(in);
                     }
-                    args.push_back("-o");
-                    args.push_back(std::string(step.output));
+                    args.emplace_back("-o");
+                    args.emplace_back(step.output);
                     add_parts(ldflags_vec);
                     add_parts(ldlibs_vec);
                 } else if (step.tool == "ar") {
@@ -396,11 +388,11 @@ Result<void> Executor::execute() {
                         args.emplace_back(in);
                 } else if (step.tool == "sld") {
                     add_parts(cxx_vec);
-                    args.push_back("-shared");
+                    args.emplace_back("-shared");
                     for (const auto &in : inputs)
                         args.emplace_back(in);
-                    args.push_back("-o");
-                    args.push_back(std::string(step.output));
+                    args.emplace_back("-o");
+                    args.emplace_back(step.output);
                 }
 
 #if FF_cbe__profiling
@@ -435,6 +427,7 @@ Result<void> Executor::execute() {
 #endif
         }
         return 0;
+        // NOLINTEND(performance-avoid-endl)
     };
 
     auto worker = [&]() {

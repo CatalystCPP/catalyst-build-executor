@@ -4,14 +4,17 @@
 #include "cbe/graph.hpp"
 #include "cbe/mmap.hpp"
 
+#include <array>
 #include <cstdint>
 #include <cstring>
+#include <fcntl.h>
 #include <fstream>
 #include <memory>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
+// NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
 namespace catalyst {
 
 namespace {
@@ -30,7 +33,7 @@ public:
         uint64_t offset = data_.size();
         uint64_t len = sv.size();
         data_.append(sv);
-        StringRef ref = {offset, len};
+        StringRef ref = {.offset=offset, .len=len};
         cache_[sv] = ref;
         return ref;
     }
@@ -44,8 +47,10 @@ private:
     std::unordered_map<std::string_view, StringRef> cache_;
 };
 
+ constexpr size_t bin_header_magic_bit_len = 8;
+
 struct BinHeader {
-    char magic[8];
+    std::array<char, bin_header_magic_bit_len> magic;
     uint64_t num_definitions;
     uint64_t num_nodes;
     uint64_t num_steps;
@@ -72,9 +77,9 @@ Result<void> parse_bin(CBEBuilder &builder) {
         return std::unexpected("Malformed .catalyst.bin: too small for header");
     }
 
-    const BinHeader *header = reinterpret_cast<const BinHeader *>(content.data());
+    const auto *header = reinterpret_cast<const BinHeader *>(content.data());
 #ifdef __linux__
-    if (std::memcmp(header->magic, "CATBL001", 8) != 0) {
+    if (std::memcmp(header->magic.data(), "CATBL001", bin_header_magic_bit_len) != 0) {
 #elifdef __apple__
     if (std::memcmp(header->magic, "CATBM001", 8) != 0) {
 #elifdef _WIN32 || _WIN64
@@ -94,7 +99,7 @@ Result<void> parse_bin(CBEBuilder &builder) {
 
     // 1. Definitions
     for (uint64_t i = 0; i < header->num_definitions; ++i) {
-        const BinDefinition *def = reinterpret_cast<const BinDefinition *>(ptr);
+        const auto *def = reinterpret_cast<const BinDefinition *>(ptr);
         builder.add_definition(get_sv(def->key), get_sv(def->val));
         ptr += sizeof(BinDefinition);
     }
@@ -248,9 +253,9 @@ Result<void> emit_bin(CBEBuilder &builder) {
         }
     }
 
-    BinHeader header;
+    BinHeader header{};
 #ifdef __linux__
-    std::memcpy(header.magic, "CATBL001", 8);
+    std::memcpy(header.magic.data(), "CATBL001", bin_header_magic_bit_len);
 #elifdef __apple__
     std::memcpy(header.magic, "CATBM001", 8);
 #elifdef _WIN32 || _WIN64
@@ -261,6 +266,7 @@ Result<void> emit_bin(CBEBuilder &builder) {
     header.num_steps = steps.size();
     header.strings_size = sb.data().size();
 
+    // NOLINTBEGIN(cppcoreguidelines-narrowing-conversions, bugprone-narrowing-conversions)
     out.write(reinterpret_cast<const char *>(&header), sizeof(BinHeader));
     out.write(reinterpret_cast<const char *>(bin_defs.data()), bin_defs.size() * sizeof(BinDefinition));
     out.write(nodes_buf.data(), nodes_buf.size());
@@ -268,6 +274,8 @@ Result<void> emit_bin(CBEBuilder &builder) {
     out.write(sb.data().data(), sb.data().size());
 
     return {};
+    // NOLINTEND(cppcoreguidelines-narrowing-conversions, bugprone-narrowing-conversions)
 }
 
 } // namespace catalyst
+// NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)

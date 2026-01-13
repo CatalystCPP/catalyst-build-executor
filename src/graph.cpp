@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <format>
 #include <functional>
-#include <future>
 
 namespace fs = std::filesystem;
 
@@ -37,7 +36,7 @@ size_t BuildGraph::get_or_create_node(std::string_view path) {
  * @param path The path to the dependency file.
  * @param callback A callable that accepts a std::string_view for each dependency.
  */
-void parse_depfile(BuildGraph &graph, const std::filesystem::path &path, auto callback) {
+void parseDepfile(BuildGraph &graph, const std::filesystem::path &path, auto callback) {
     if (!fs::exists(path)) {
         return;
     }
@@ -166,7 +165,7 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
             step.depfile_inputs->emplace_back(fn);
         };
         const fs::path depfile_path = std::format("{}.d", step.output);
-        parse_depfile(*this, depfile_path, depfile_parse_callback);
+        parseDepfile(*this, depfile_path, depfile_parse_callback);
     } else if (step.tool == "ld" || step.tool == "sld" || step.tool == "ar") {
         // TODO: parse .rsp file
     }
@@ -217,7 +216,7 @@ Result<std::vector<size_t>> BuildGraph::topo_sort() const {
         }
     }
 
-    std::reverse(order.begin(), order.end());
+    std::ranges::reverse(order);
     return order;
 }
 

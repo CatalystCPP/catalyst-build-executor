@@ -64,7 +64,7 @@ struct ExecutorConfig {
  */
 class Executor {
 public:
-    Executor(CBEBuilder &&builder, ExecutorConfig config = {});
+    Executor(CBEBuilder &&builder, const ExecutorConfig &config);
 
     /**
      * @brief Executes the build.
@@ -95,7 +95,7 @@ public:
     Result<void> emit_graph();
 
 private:
-    bool needs_rebuild(const BuildStep &step, StatCache &stat_cache);
+    bool needs_rebuild(const BuildStep &step, StatCache &stat_cache) const;
 
     CBEBuilder builder;
     ExecutorConfig config;

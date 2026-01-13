@@ -1,5 +1,6 @@
 #include "cbe/executor.hpp"
 
+#include <algorithm>
 #include <filesystem>
 using namespace catalyst;
 
