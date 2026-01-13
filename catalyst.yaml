@@ -30,4 +30,8 @@ dependencies:
 hooks:
   post-generate:
     - command: "command -v doxygen"
-    - command: "doxygen"              # if the above fails, this won't run
+    - command: "doxygen"
+features:
+  - binary: true
+  - profiling: false
+  - logging: false

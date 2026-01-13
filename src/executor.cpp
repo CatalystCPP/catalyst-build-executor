@@ -6,6 +6,9 @@
 #include "nlohmann/detail/json_custom_base_class.hpp"
 
 #include <atomic>
+#if FF_cbe__profiling
+#include <chrono>
+#endif
 #include <condition_variable>
 #include <cstddef>
 #include <cstdio>
@@ -382,7 +385,18 @@ Result<void> Executor::execute() {
                     args.push_back(std::string(step.output));
                 }
 
+#if FF_cbe__profiling
+                auto start = std::chrono::steady_clock::now();
+#endif
                 auto res = catalyst::process_exec(std::move(args));
+#if FF_cbe__profiling
+                auto end = std::chrono::steady_clock::now();
+                std::chrono::duration<double> diff = end - start;
+                {
+                    std::lock_guard lock(cout_tty_mtx);
+                    std::println("Step {} took {:.4f}s", step.output, diff.count());
+                }
+#endif
 
                 if (res) {
                     int ec = *res;
@@ -395,6 +409,12 @@ Result<void> Executor::execute() {
                     return 1;
                 }
             }
+#if FF_cbe__logging
+            else {
+                std::lock_guard lock(cout_tty_mtx);
+                std::println("Skipping {} (up to date)", step.output);
+            }
+#endif
         }
         return 0;
     };

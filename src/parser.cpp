@@ -54,10 +54,12 @@ Result<void> parse_step(const std::string_view line, CBEBuilder &builder) {
 } // namespace
 
 Result<void> parse(CBEBuilder &builder, const std::filesystem::path &path) {
+#if FF_cbe__binary == 1
     if (std::filesystem::exists(".catalyst.bin") &&
         std::filesystem::last_write_time(".catalyst.bin") > std::filesystem::last_write_time(path)) {
         return parse_bin(builder);
     }
+#endif
     std::string_view content;
     try {
         auto file = std::make_shared<MappedFile>(path);
@@ -97,8 +99,10 @@ Result<void> parse(CBEBuilder &builder, const std::filesystem::path &path) {
 
         start = end + 1;
     }
+#if FF_cbe__binary
     auto _ = emit_bin(builder);
-    return {}; // don't trigger a failure
+#endif
+    return {};
 }
 
 } // namespace catalyst
