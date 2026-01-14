@@ -96,33 +96,45 @@ $(document).ready(function(){initNavTree('work__estimate_8hpp.html',''); initRes
   <div class="headertitle"><div class="title">work_estimate.hpp File Reference</div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><code>#include &quot;<a class="el" href="utility_8hpp_source.html">cbe/utility.hpp</a>&quot;</code><br />
+<div class="textblock"><code>#include &quot;<a class="el" href="mmap_8hpp_source.html">cbe/mmap.hpp</a>&quot;</code><br />
+<code>#include &lt;charconv&gt;</code><br />
 <code>#include &lt;cstddef&gt;</code><br />
 <code>#include &lt;filesystem&gt;</code><br />
-<code>#include &lt;shared_mutex&gt;</code><br />
-<code>#include &lt;string&gt;</code><br />
-<code>#include &lt;vector&gt;</code><br />
+<code>#include &lt;memory&gt;</code><br />
+<code>#include &lt;string_view&gt;</code><br />
+<code>#include &lt;unordered_map&gt;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for work_estimate.hpp:</div>
 <div class="dyncontent">
 <div class="center"><img src="work__estimate_8hpp__incl.png" border="0" usemap="#ainclude_2cbe_2work__estimate_8hpp" alt=""/></div>
 <map name="ainclude_2cbe_2work__estimate_8hpp" id="ainclude_2cbe_2work__estimate_8hpp">
-<area shape="rect" title=" " alt="" coords="169,5,395,31"/>
-<area shape="rect" href="utility_8hpp.html" title=" " alt="" coords="5,79,119,104"/>
-<area shape="poly" title=" " alt="" coords="247,33,111,77,110,72,246,28"/>
-<area shape="rect" title=" " alt="" coords="127,152,186,177"/>
-<area shape="poly" title=" " alt="" coords="253,33,217,52,185,80,170,109,162,139,157,138,165,107,181,77,214,48,250,28"/>
-<area shape="rect" title=" " alt="" coords="195,79,265,104"/>
-<area shape="poly" title=" " alt="" coords="276,33,249,69,244,66,271,29"/>
-<area shape="rect" title=" " alt="" coords="290,79,381,104"/>
-<area shape="poly" title=" " alt="" coords="293,29,321,66,316,69,289,33"/>
-<area shape="rect" title=" " alt="" coords="405,79,519,104"/>
-<area shape="poly" title=" " alt="" coords="312,28,421,71,419,76,310,33"/>
-<area shape="rect" title=" " alt="" coords="544,79,607,104"/>
-<area shape="poly" title=" " alt="" coords="332,28,531,76,530,81,331,33"/>
-<area shape="rect" title=" " alt="" coords="21,152,103,177"/>
-<area shape="poly" title=" " alt="" coords="65,104,65,138,59,138,59,104"/>
-<area shape="poly" title=" " alt="" coords="79,102,132,141,129,146,76,106"/>
+<area shape="rect" title=" " alt="" coords="285,5,510,31"/>
+<area shape="rect" href="mmap_8hpp.html" title=" " alt="" coords="214,79,333,104"/>
+<area shape="poly" title=" " alt="" coords="379,33,307,74,304,69,376,28"/>
+<area shape="rect" title=" " alt="" coords="5,152,96,177"/>
+<area shape="poly" title=" " alt="" coords="337,33,261,52,181,81,124,113,77,146,74,141,121,108,179,76,259,47,335,28"/>
+<area shape="rect" title=" " alt="" coords="121,152,218,177"/>
+<area shape="poly" title=" " alt="" coords="303,33,251,51,226,64,205,81,186,108,176,139,171,137,181,106,201,77,223,60,248,46,301,28"/>
+<area shape="rect" title=" " alt="" coords="357,79,438,104"/>
+<area shape="poly" title=" " alt="" coords="400,31,400,65,395,65,395,31"/>
+<area shape="rect" title=" " alt="" coords="462,79,533,104"/>
+<area shape="poly" title=" " alt="" coords="415,29,471,68,468,73,412,33"/>
+<area shape="rect" title=" " alt="" coords="557,79,635,104"/>
+<area shape="poly" title=" " alt="" coords="430,28,551,71,550,76,428,33"/>
+<area shape="rect" title=" " alt="" coords="659,79,783,104"/>
+<area shape="poly" title=" " alt="" coords="450,28,656,73,655,78,449,33"/>
+<area shape="poly" title=" " alt="" coords="238,107,100,150,99,145,237,101"/>
+<area shape="rect" title=" " alt="" coords="665,152,751,177"/>
+<area shape="poly" title=" " alt="" coords="333,99,346,101,497,124,652,149,651,155,496,129,345,107,333,105"/>
+<area shape="poly" title=" " alt="" coords="258,106,199,146,196,142,255,102"/>
+<area shape="rect" title=" " alt="" coords="242,152,305,177"/>
+<area shape="poly" title=" " alt="" coords="276,104,276,138,271,138,271,104"/>
+<area shape="rect" title=" " alt="" coords="329,152,431,177"/>
+<area shape="poly" title=" " alt="" coords="292,102,353,142,350,147,289,106"/>
+<area shape="rect" title=" " alt="" coords="456,152,541,177"/>
+<area shape="poly" title=" " alt="" coords="310,101,450,145,448,150,309,107"/>
+<area shape="rect" title=" " alt="" coords="565,152,640,177"/>
+<area shape="poly" title=" " alt="" coords="329,101,552,149,551,154,328,107"/>
 </map>
 </div>
 </div><div class="textblock"><div class="dynheader">
@@ -130,9 +142,17 @@ This graph shows which files directly or indirectly include this file:</div>
 <div class="dyncontent">
 <div class="center"><img src="work__estimate_8hpp__dep__incl.png" border="0" usemap="#ainclude_2cbe_2work__estimate_8hppdep" alt=""/></div>
 <map name="ainclude_2cbe_2work__estimate_8hppdep" id="ainclude_2cbe_2work__estimate_8hppdep">
-<area shape="rect" title=" " alt="" coords="5,5,231,31"/>
-<area shape="rect" href="work__estimate_8cpp.html" title=" " alt="" coords="33,79,203,104"/>
-<area shape="poly" title=" " alt="" coords="121,44,121,79,115,79,115,44"/>
+<area shape="rect" title=" " alt="" coords="175,5,400,31"/>
+<area shape="rect" href="executor_8hpp.html" title=" " alt="" coords="96,79,279,104"/>
+<area shape="poly" title=" " alt="" coords="262,41,205,81,202,76,259,36"/>
+<area shape="rect" href="work__estimate_8cpp.html" title=" " alt="" coords="303,79,472,104"/>
+<area shape="poly" title=" " alt="" coords="316,36,373,76,369,81,313,41"/>
+<area shape="rect" href="cbe_8cpp.html" title=" " alt="" coords="5,152,100,177"/>
+<area shape="poly" title=" " alt="" coords="155,113,76,154,73,149,152,108"/>
+<area shape="rect" href="executor_8cpp.html" title=" " alt="" coords="124,152,251,177"/>
+<area shape="poly" title=" " alt="" coords="190,118,190,152,185,152,185,118"/>
+<area shape="rect" href="executor__stat__cache_8cpp.html" title=" " alt="" coords="275,152,481,177"/>
+<area shape="poly" title=" " alt="" coords="232,106,348,149,346,154,230,111"/>
 </map>
 </div>
 </div>
@@ -141,8 +161,6 @@ This graph shows which files directly or indirectly include this file:</div>
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcatalyst_1_1WorkEstimate.html">catalyst::WorkEstimate</a></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structcatalyst_1_1WorkEstimate_1_1Entry.html">catalyst::WorkEstimate::Entry</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="namespaces" name="namespaces"></a>
@@ -156,7 +174,7 @@ Namespaces</h2></td></tr>
 <div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->
   <ul>
     <li class="navelem"><a class="el" href="dir_d44c64559bbebec7f509842c48db8b23.html">include</a></li><li class="navelem"><a class="el" href="dir_4174ff7d21695f9c7386e9e47345b605.html">cbe</a></li><li class="navelem"><a class="el" href="work__estimate_8hpp.html">work_estimate.hpp</a></li>
-    <li class="footer">Generated on Mon Jan 12 2026 21:56:39 for Catalyst Build Executor by <a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8 </li>
+    <li class="footer">Generated on Tue Jan 13 2026 11:52:48 for Catalyst Build Executor by <a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8 </li>
   </ul>
 </div>
 </body>

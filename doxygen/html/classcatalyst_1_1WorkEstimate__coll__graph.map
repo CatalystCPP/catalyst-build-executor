@@ -1,13 +1,13 @@
 <map id="catalyst::WorkEstimate" name="catalyst::WorkEstimate">
-<area shape="rect" id="Node000001" title=" " alt="" coords="100,403,273,428"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,300,184,340"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="125,348,177,400,173,404,121,352"/>
-<area shape="rect" id="Node000003" href="$structcatalyst_1_1WorkEstimate_1_1Entry.html" title=" " alt="" coords="8,197,181,237"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="97,251,97,300,92,300,92,251"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="32,95,157,120"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="97,134,97,197,92,197,92,134"/>
-<area shape="rect" id="Node000005" title=" " alt="" coords="11,5,178,45"/>
-<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="97,59,97,94,92,94,92,59"/>
-<area shape="rect" id="Node000006" title=" " alt="" coords="209,307,351,333"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="261,345,226,381,201,404,197,400,222,377,258,341"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="861,49,1035,74"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="492,5,679,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="693,33,861,50,861,55,692,39"/>
+<area shape="rect" id="Node000003" href="$classcatalyst_1_1MappedFile.html" title="cross&#45;platform read&#45;only memory mapped file wrapper." alt="" coords="221,13,379,38"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="392,23,492,23,492,28,392,28"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="509,70,661,125"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="675,86,861,67,861,73,675,91"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="237,85,363,110"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="376,95,509,95,509,100,376,100"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="5,77,172,117"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="186,95,237,95,237,100,186,100"/>
 </map>

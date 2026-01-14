@@ -15,5 +15,6 @@ var annotated_dup =
       [ "MappedFile", "classcatalyst_1_1MappedFile.html", "classcatalyst_1_1MappedFile" ],
       [ "StatCache", "classcatalyst_1_1StatCache.html", "classcatalyst_1_1StatCache" ],
       [ "WorkEstimate", "classcatalyst_1_1WorkEstimate.html", "classcatalyst_1_1WorkEstimate" ]
-    ] ]
+    ] ],
+    [ "CliArgs", "structCliArgs.html", "structCliArgs" ]
 ];

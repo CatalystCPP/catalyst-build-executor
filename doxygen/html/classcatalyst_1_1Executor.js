@@ -8,5 +8,6 @@ var classcatalyst_1_1Executor =
     [ "needs_rebuild", "classcatalyst_1_1Executor.html#ac73b152605b44d749834e7213c3b8835", null ],
     [ "builder", "classcatalyst_1_1Executor.html#a500af9687c756897ad88fc375c1bc77f", null ],
     [ "config", "classcatalyst_1_1Executor.html#a8e869c76717f1696ff22d8cafbecc99b", null ],
+    [ "estimator", "classcatalyst_1_1Executor.html#ae230839880d19eac153b6ab8ac9c27d0", null ],
     [ "pool", "classcatalyst_1_1Executor.html#acb50c5921c17abec0fcb012d71318628", null ]
 ];
