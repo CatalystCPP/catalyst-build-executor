@@ -99,7 +99,6 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
     CliArgs par;
     catalyst::ExecutorConfig config;
 
-    std::filesystem::path work_dir = ".";
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
         if (arg == "-h" || arg == "--help") {
@@ -112,7 +111,7 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
         }
         if (arg == "-d") {
             if (i + 1 < argc) {
-                work_dir = argv[i + 1];
+                par.work_dir = argv[i + 1];
                 i++;
             } else {
                 return std::unexpected("Missing argument for -d");
