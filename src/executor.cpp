@@ -273,7 +273,7 @@ Result<void> Executor::execute() {
         size_t est = 0;
         const auto &node = build_graph.nodes()[idx];
         if (node.step_id.has_value()) {
-            est = estimator->get_work_estimate(build_graph.steps()[*node.step_id].output);
+            est = estimator->getWorkEstimate(build_graph.steps()[*node.step_id].output);
         }
         ready_queue.push({.node_idx = idx, .estimate = est});
     };
