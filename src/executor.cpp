@@ -3,6 +3,7 @@
 #include "cbe/builder.hpp"
 #include "cbe/process_exec.hpp"
 #include "cbe/utility.hpp"
+#include "nlohmann/json_fwd.hpp"
 
 #include <atomic>
 #if FF_cbe__profiling
@@ -27,6 +28,79 @@
 #include <sys/mman.h>
 #include <thread>
 #include <vector>
+
+namespace {
+struct BuildCompdbParams {
+    const std::vector<size_t> &order;
+    const catalyst::BuildGraph &build_graph;
+    std::vector<std::string> cc_vec;
+    std::vector<std::string> cxx_vec;
+    std::vector<std::string> cflags_vec;
+    std::vector<std::string> cxxflags_vec;
+};
+
+nlohmann::json buildCompdb(const BuildCompdbParams &params) {
+    auto [order, build_graph, cc_vec, cxx_vec, cflags_vec, cxxflags_vec] = params;
+    using JSON = nlohmann::json;
+    JSON compdb = JSON::array();
+    auto cwd = std::filesystem::current_path().string();
+
+    for (size_t node_idx : order) {
+        const auto &node = build_graph.nodes()[node_idx];
+        if (!node.step_id.has_value())
+            continue;
+        const auto &step = build_graph.steps()[*node.step_id];
+
+        // Only emit for compilation steps
+        if (step.tool != "cc" && step.tool != "cxx")
+            continue;
+
+        const std::vector<std::string_view> &inputs = step.parsed_inputs;
+
+        std::vector<std::string> args;
+        auto add_parts = [&args](const auto &parts) {
+            for (const auto &part : parts) {
+                if (part.begin() != part.end()) {
+                    args.push_back(std::ranges::to<std::string>(part));
+                }
+            }
+        };
+
+        constexpr static size_t EXTRA_ARGS_RESERVED_SPACE = 7;
+        if (step.tool == "cc") {
+            add_parts(cc_vec);
+            add_parts(cflags_vec);
+            args.reserve(args.size() + inputs.size() + EXTRA_ARGS_RESERVED_SPACE);
+            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        } else if (step.tool == "cxx") {
+            add_parts(cxx_vec);
+            add_parts(cxxflags_vec);
+            args.reserve(args.size() + inputs.size() + EXTRA_ARGS_RESERVED_SPACE);
+            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+            args.reserve(args.size() + inputs.size());
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        }
+
+        JSON entry;
+        entry["directory"] = cwd;
+        entry["arguments"] = args;
+        if (!inputs.empty()) {
+            entry["file"] = inputs[0];
+        }
+        entry["output"] = step.output;
+        compdb.push_back(entry);
+    }
+
+    return compdb;
+}
+} // namespace
 
 namespace catalyst {
 
@@ -136,87 +210,20 @@ Result<void> Executor::emit_graph() {
 Result<void> Executor::emit_compdb() {
     catalyst::BuildGraph build_graph = builder.emit_graph();
     std::vector<size_t> order;
-    if (auto res = build_graph.topo_sort(); !res) {
+    auto res = build_graph.topo_sort();
+    if (!res)
         return std::unexpected(res.error());
-    } else {
-        order = *res;
-    }
+    order = *res;
 
-    const auto &defs = builder.definitions();
-    auto get_def = [&](std::string_view key) -> std::string {
-        if (auto it = defs.find(key); it != defs.end())
-            return std::string(it->second);
-        return "";
-    };
-
-    // This __must__ be done otherwise optimizations will fuck up.
-    const std::string cc = get_def("cc");
-    const std::string cxx = get_def("cxx");
-    const std::string cxxflags = get_def("cxxflags");
-    const std::string cflags = get_def("cflags");
-
-    const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector cxx_vec = std::ranges::views::split(cxx, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector cflags_vec = std::ranges::views::split(cflags, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector cxxflags_vec =
-        std::ranges::views::split(cxxflags, ' ') | std::ranges::to<std::vector<std::string>>();
-
-    using json = nlohmann::json;
-    json compdb = json::array();
-    auto cwd = std::filesystem::current_path().string();
-
-    for (size_t node_idx : order) {
-        const auto &node = build_graph.nodes()[node_idx];
-        if (!node.step_id.has_value())
-            continue;
-        const auto &step = build_graph.steps()[*node.step_id];
-
-        // Only emit for compilation steps
-        if (step.tool != "cc" && step.tool != "cxx")
-            continue;
-
-        const std::vector<std::string_view> &inputs = step.parsed_inputs;
-
-        std::vector<std::string> args;
-        auto add_parts = [&args](const auto &parts) {
-            for (const auto &part : parts) {
-                if (part.begin() != part.end()) {
-                    args.push_back(std::ranges::to<std::string>(part));
-                }
-            }
-        };
-
-        constexpr static size_t extra_md_reserves = 7;
-        if (step.tool == "cc") {
-            add_parts(cc_vec);
-            add_parts(cflags_vec);
-            args.reserve(args.size() + inputs.size() + extra_md_reserves);
-            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
-            for (const auto &in : inputs)
-                args.emplace_back(in);
-            args.emplace_back("-o");
-            args.emplace_back(step.output);
-        } else if (step.tool == "cxx") {
-            add_parts(cxx_vec);
-            add_parts(cxxflags_vec);
-            args.reserve(args.size() + inputs.size() + extra_md_reserves);
-            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
-            args.reserve(args.size() + inputs.size());
-            for (const auto &in : inputs)
-                args.emplace_back(in);
-            args.emplace_back("-o");
-            args.emplace_back(step.output);
-        }
-
-        json entry;
-        entry["directory"] = cwd;
-        entry["arguments"] = args;
-        if (!inputs.empty()) {
-            entry["file"] = inputs[0];
-        }
-        entry["output"] = step.output;
-        compdb.push_back(entry);
-    }
+    using JSON = nlohmann::json;
+    JSON compdb = buildCompdb({
+        .order = order,
+        .build_graph = build_graph,
+        .cc_vec = builder.getDefinitionOf<std::vector<std::string>>("cc"),
+        .cxx_vec = builder.getDefinitionOf<std::vector<std::string>>("cxx"),
+        .cflags_vec = builder.getDefinitionOf<std::vector<std::string>>("cflags"),
+        .cxxflags_vec = builder.getDefinitionOf<std::vector<std::string>>("cxxflags"),
+    });
 
     std::ofstream f("compile_commands.json");
     f << compdb.dump(4);
@@ -228,29 +235,12 @@ Result<void> Executor::execute() {
 
     catalyst::BuildGraph build_graph = builder.emit_graph();
 
-    const auto &defs = builder.definitions();
-    auto get_def = [&](std::string_view key) -> std::string {
-        if (auto it = defs.find(key); it != defs.end())
-            return std::string(it->second);
-        return "";
-    };
-
-    // This __must__ be done otherwise optimizations will fuck up.
-    const std::string cc = get_def("cc");
-    const std::string cxx = get_def("cxx");
-    const std::string cxxflags = get_def("cxxflags");
-    const std::string cflags = get_def("cflags");
-    const std::string ldflags = get_def("ldflags");
-    const std::string ldlibs = get_def("ldlibs");
-
-    const std::vector cc_vec = std::ranges::views::split(cc, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector cxx_vec = std::ranges::views::split(cxx, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector cflags_vec = std::ranges::views::split(cflags, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector cxxflags_vec =
-        std::ranges::views::split(cxxflags, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector ldflags_vec =
-        std::ranges::views::split(ldflags, ' ') | std::ranges::to<std::vector<std::string>>();
-    const std::vector ldlibs_vec = std::ranges::views::split(ldlibs, ' ') | std::ranges::to<std::vector<std::string>>();
+    const auto cc_vec = builder.getDefinitionOf<std::vector<std::string>>("cc");
+    const auto cxx_vec = builder.getDefinitionOf<std::vector<std::string>>("cxx");
+    const auto cflags_vec = builder.getDefinitionOf<std::vector<std::string>>("cflags");
+    const auto cxxflags_vec = builder.getDefinitionOf<std::vector<std::string>>("cxxflags");
+    const auto ldflags_vec = builder.getDefinitionOf<std::vector<std::string>>("ldflags");
+    const auto ldlibs_vec = builder.getDefinitionOf<std::vector<std::string>>("ldlibs");
 
     // Build in-degrees
     std::vector<int> in_degrees(build_graph.nodes().size(), 0);

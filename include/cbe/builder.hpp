@@ -4,6 +4,11 @@
 
 #include <filesystem>
 #include <memory>
+#include <ranges>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <vector>
 
 namespace catalyst {
 
@@ -25,7 +30,7 @@ public:
     const BuildGraph &graph() const {
         return graph_;
     }
-    
+
     /**
      * @brief Returns the built graph by moving it out of the builder.
      * @return The completed `BuildGraph`.
@@ -58,8 +63,22 @@ public:
     friend Result<void> parse(CBEBuilder &, const std::filesystem::path &);
     friend Result<void> parse_bin(CBEBuilder &);
     friend Result<void> emit_bin(CBEBuilder &);
+    friend class Executor;
 
 private:
+    template <typename Return_T> Return_T getDefinitionOf(std::string_view key) const {
+        if constexpr (std::is_same_v<Return_T, std::string>) {
+            if (auto it = definitions_.find(key); it != definitions_.end())
+                return std::string(it->second);
+            return "";
+        } else if constexpr (std::is_same_v<Return_T, std::vector<std::string>>) {
+            auto def = getDefinitionOf<std::string>(key);
+            return std::ranges::views::split(def, ' ') | std::ranges::to<std::vector<std::string>>();
+        } else {
+            static_assert(std::false_type(), "Unsupported Return_T for getDefinitionOf");
+        }
+    }
+
     BuildGraph graph_;
     Definitions definitions_;
 };
