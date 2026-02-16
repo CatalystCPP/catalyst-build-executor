@@ -31,7 +31,7 @@ public:
      * @param path The path to the file.
      * @throws std::runtime_error If opening, stating, or mapping fails.
      */
-    explicit MappedFile(const std::filesystem::path &path) {
+    explicit MappedFile(const std::filesystem::path &path, bool populate = true) {
 #ifdef _WIN32
         file_handle_ = CreateFileW(
             path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -88,7 +88,8 @@ public:
         posix_fadvise(fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
 
 #ifdef __linux__
-        void *addr = mmap(nullptr, size_, PROT_READ, MAP_POPULATE | MAP_PRIVATE, fd_, 0);
+        int flags = populate ? (MAP_POPULATE | MAP_PRIVATE) : MAP_PRIVATE;
+        void *addr = mmap(nullptr, size_, PROT_READ, flags, fd_, 0);
 #else
         void *addr = mmap(nullptr, size_, PROT_READ, MAP_PRIVATE, fd_, 0);
 #endif
@@ -128,6 +129,8 @@ public:
         return {data_, size_};
     }
 
+    MappedFile(MappedFile &&other) noexcept = default;
+    MappedFile &operator=(MappedFile &&other) noexcept = default;
     MappedFile(const MappedFile &) = delete;
     MappedFile &operator=(const MappedFile &) = delete;
 
@@ -142,4 +145,9 @@ private:
     size_t size_ = 0;
 };
 
+class MappedUnfaultedFile : public MappedFile {
+public:
+    explicit MappedUnfaultedFile(const std::filesystem::path &path) : MappedFile(path, false) {
+    }
+};
 } // namespace catalyst

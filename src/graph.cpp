@@ -100,7 +100,7 @@ void parseDepfile(BuildGraph &graph, const std::filesystem::path &path, auto cal
     if (!fs::exists(path)) {
         return;
     }
-    auto map = std::make_shared<MappedFile>(path);
+    auto map = std::make_shared<MappedUnfaultedFile>(path);
     graph.add_resource(map);
     std::string_view content = map->content();
 
