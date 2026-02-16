@@ -26,6 +26,66 @@ size_t BuildGraph::get_or_create_node(std::string_view path) {
     return id;
 }
 
+namespace {
+// Helper to skip whitespace and handle line continuations
+const char *skipWhitespace(const char *ptr, const char *end) {
+    while (ptr < end) {
+        unsigned char c = *ptr;
+        if (c > ' ' && c != '\\')
+            break;
+
+        if (c <= ' ') {
+            ptr++;
+        } else if (c == '\\') {
+            if (ptr + 1 < end && (ptr[1] == '\n' || ptr[1] == '\r')) {
+                ptr++; // skip backslash
+                if (ptr < end && *ptr == '\r')
+                    ptr++;
+                if (ptr < end && *ptr == '\n')
+                    ptr++;
+            } else {
+                break; // Escaped character, start of a filename
+            }
+        }
+    }
+    return ptr;
+}
+
+// Helper to extract a single token, handling escaped spaces
+const char *extractToken(const char *ptr, const char *end, std::string_view &out_token) {
+    const char *start = ptr;
+    while (ptr < end) {
+        unsigned char c = *ptr;
+        if (c <= ' ' || c == '\\')
+            break;
+        ptr++;
+    }
+
+    // Handle escaped characters (spaces, etc.)
+    if (ptr < end && *ptr == '\\') {
+        while (ptr < end) {
+            if (*ptr == '\\') {
+                if (ptr + 1 >= end) {
+                    ptr++; // Dangling backslash
+                    break;
+                }
+                if (ptr[1] == '\n' || ptr[1] == '\r') {
+                    break; // Line continuation means end of token
+                }
+                ptr += 2; // Skip escaped char
+            } else if (static_cast<unsigned char>(*ptr) <= ' ') {
+                break; // Unescaped whitespace ends token
+            } else {
+                ptr++;
+            }
+        }
+    }
+
+    out_token = std::string_view(start, ptr - start);
+    return ptr;
+}
+} // namespace
+
 /**
  * @brief Parses a Makefile-style dependency file (.d).
  *
@@ -58,63 +118,15 @@ void parseDepfile(BuildGraph &graph, const std::filesystem::path &path, auto cal
 
     // Main parsing loop
     while (ptr < end) {
-        while (ptr < end) {
-            unsigned char c = *ptr;
-            if (c > ' ' && c != '\\')
-                break;
-
-            if (c <= ' ') {
-                ptr++;
-            } else if (c == '\\') {
-                if (ptr + 1 < end && (ptr[1] == '\n' || ptr[1] == '\r')) {
-                    ptr++; // skip
-                    if (*ptr == '\r')
-                        ptr++;
-                    if (ptr < end && *ptr == '\n')
-                        ptr++;
-                } else {
-                    break; // Escaped character, part of a filename
-                }
-            }
-        }
-
+        ptr = skipWhitespace(ptr, end);
         if (ptr >= end)
             break;
 
-        // Extract Token
-        const char *start = ptr;
-        while (ptr < end) {
-            unsigned char c = *ptr;
+        std::string_view token;
+        ptr = extractToken(ptr, end, token);
 
-            if (c <= ' ' || c == '\\')
-                break;
-            ptr++;
-        }
-
-        // Handle the edge case of an escaped space or line continuation within a token
-        if (ptr < end && *ptr == '\\') {
-            // If we hit a backslash, we fall back to a slower scan for this specific token
-            while (ptr < end) {
-                if (*ptr == '\\') {
-                    if (ptr + 1 >= end) {
-                        // Dangling backslash at EOF
-                        ++ptr;
-                        break;
-                    }
-                    if (ptr[1] == '\n' || ptr[1] == '\r') {
-                        break; // line continuation
-                    }
-                    ptr += 2; // Safe: we know ptr + 1 < end
-                } else if (static_cast<unsigned char>(*ptr) <= ' ') {
-                    break;
-                } else {
-                    ptr++;
-                }
-            }
-        }
-
-        if (ptr > start) {
-            callback(std::string_view(start, ptr - start));
+        if (!token.empty()) {
+            callback(token);
         }
     }
 }
@@ -140,15 +152,16 @@ Result<size_t> BuildGraph::add_step(BuildStep step) {
             remaining = remaining.substr(comma_pos + 1);
         }
 
-        if (!in_path.empty()) {
-            if (in_path.starts_with('!')) {
-                auto opaque_path = in_path.substr(1);
-                if (!step.opaque_inputs)
-                    step.opaque_inputs.emplace();
-                step.opaque_inputs->push_back(opaque_path);
-            } else {
-                step.parsed_inputs.push_back(in_path);
-            }
+        if (in_path.empty())
+            continue;
+
+        if (in_path.starts_with('!')) {
+            auto opaque_path = in_path.substr(1);
+            if (!step.opaque_inputs)
+                step.opaque_inputs.emplace();
+            step.opaque_inputs->push_back(opaque_path);
+        } else {
+            step.parsed_inputs.push_back(in_path);
         }
     }
 

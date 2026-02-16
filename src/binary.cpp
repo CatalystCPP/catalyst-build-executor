@@ -27,30 +27,30 @@ struct StringRef {
 class StringBuffer {
 public:
     StringRef add(std::string_view sv) {
-        if (auto it = cache_.find(sv); it != cache_.end()) {
+        if (auto it = buffer_cache.find(sv); it != buffer_cache.end()) {
             return it->second;
         }
-        uint64_t offset = data_.size();
+        uint64_t offset = buffer_data.size();
         uint64_t len = sv.size();
-        data_.append(sv);
+        buffer_data.append(sv);
         StringRef ref = {.offset=offset, .len=len};
-        cache_[sv] = ref;
+        buffer_cache[sv] = ref;
         return ref;
     }
 
     const std::string &data() const {
-        return data_;
+        return buffer_data;
     }
 
 private:
-    std::string data_;
-    std::unordered_map<std::string_view, StringRef> cache_;
+    std::string buffer_data;
+    std::unordered_map<std::string_view, StringRef> buffer_cache;
 };
 
- constexpr size_t bin_header_magic_bit_len = 8;
+ constexpr size_t BIN_HEADER_MAGIC_BIT_LEN = 8;
 
 struct BinHeader {
-    std::array<char, bin_header_magic_bit_len> magic;
+    std::array<char, BIN_HEADER_MAGIC_BIT_LEN> magic;
     uint64_t num_definitions;
     uint64_t num_nodes;
     uint64_t num_steps;
@@ -79,7 +79,7 @@ Result<void> parse_bin(CBEBuilder &builder) {
 
     const auto *header = reinterpret_cast<const BinHeader *>(content.data());
 #ifdef __linux__
-    if (std::memcmp(header->magic.data(), "CATBL001", bin_header_magic_bit_len) != 0) {
+    if (std::memcmp(header->magic.data(), "CATBL001", BIN_HEADER_MAGIC_BIT_LEN) != 0) {
 #elifdef __apple__
     if (std::memcmp(header->magic, "CATBM001", 8) != 0) {
 #elifdef _WIN32 || _WIN64
@@ -255,7 +255,7 @@ Result<void> emit_bin(CBEBuilder &builder) {
 
     BinHeader header{};
 #ifdef __linux__
-    std::memcpy(header.magic.data(), "CATBL001", bin_header_magic_bit_len);
+    std::memcpy(header.magic.data(), "CATBL001", BIN_HEADER_MAGIC_BIT_LEN);
 #elifdef __apple__
     std::memcpy(header.magic, "CATBM001", 8);
 #elifdef _WIN32 || _WIN64

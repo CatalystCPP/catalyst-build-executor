@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
-using namespace catalyst;
+using catalyst::StatCache;
 
 bool StatCache::Entry::operator<(const Entry &other) const {
     return path < other.path;
@@ -13,11 +13,10 @@ bool StatCache::Entry::operator<(const std::filesystem::path &other_path) const 
 
 auto StatCache::get_or_update(const std::filesystem::path &p)
     -> std::pair<std::filesystem::file_time_type, std::error_code> {
-    auto is_path_less = [](const Entry &e, const std::filesystem::path &val) { return e.path < val; };
     {
         std::shared_lock read_lock(cache_mtx);
 
-        auto it = std::lower_bound(cache.begin(), cache.end(), p, is_path_less);
+        auto it = std::ranges::lower_bound(cache, p, {}, &Entry::path);
 
         if (it != cache.end() && it->path == p) {
             return {it->time, it->ec};
@@ -25,7 +24,7 @@ auto StatCache::get_or_update(const std::filesystem::path &p)
     }
 
     std::lock_guard write_lock(cache_mtx);
-    auto it = std::lower_bound(cache.begin(), cache.end(), p, is_path_less);
+    auto it = std::ranges::lower_bound(cache, p, {}, &Entry::path);
     std::error_code ec;
     auto time = std::filesystem::last_write_time(p, ec);
 
