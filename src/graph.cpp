@@ -1,7 +1,7 @@
 #include "cbe/graph.hpp"
 
 #include "cbe/domain.hpp"
-#include "cbe/mmap.hpp"
+#include "cbe/file_handle.hpp"
 #include "cbe/utility.hpp"
 
 #include <algorithm>

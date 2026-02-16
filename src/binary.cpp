@@ -2,7 +2,7 @@
 
 #include "cbe/builder.hpp"
 #include "cbe/graph.hpp"
-#include "cbe/mmap.hpp"
+#include "cbe/file_handle.hpp"
 
 #include <array>
 #include <cstdint>

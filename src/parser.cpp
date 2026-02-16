@@ -2,7 +2,7 @@
 
 #include "cbe/binary.hpp"
 #include "cbe/builder.hpp"
-#include "cbe/mmap.hpp"
+#include "cbe/file_handle.hpp"
 #include "cbe/utility.hpp"
 
 #include <memory>
