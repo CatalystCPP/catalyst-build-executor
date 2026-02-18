@@ -13,16 +13,16 @@
 void printHelp() {
     std::println("Usage: cbe [options]");
     std::println("Options:");
-    std::println("  -h, --help       Show this help message");
-    std::println("  -v, --version    Show version");
-    std::println("  -d <dir>         Change working directory before doing anything");
-    std::println("  -e <estimate>    Use <estimate> as the estimate file (default: catalyst.estimates)");
-    std::println("  -f <file>        Use <file> as the build manifest (default: catalyst.build)");
-    std::println("  -j, --jobs <N>   Set number of parallel jobs (default: auto)");
-    std::println("  --dry-run        Print commands without executing them");
-    std::println("  --clean          Remove build artifacts");
-    std::println("  --compdb         Generate compile_commands.json");
-    std::println("  --graph          Generate DOT graph of build");
+    std::println("  -h, --help                    Show this help message");
+    std::println("  -v, --version                 Show version");
+    std::println("  -C <dir>                      Change working directory before doing anything");
+    std::println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
+    std::println("  -f <file>                     Use <file> as the build manifest (default: catalyst.build)");
+    std::println("  -j, --jobs <N>                Set number of parallel jobs (default: auto)");
+    std::println("  -n, --dry-run                 Print commands without executing them");
+    std::println("  --clean                       Remove build artifacts");
+    std::println("  --compdb                      Generate compile_commands.json");
+    std::println("  --graph                       Generate DOT graph of build");
 }
 
 void printVersion() {
@@ -35,7 +35,7 @@ struct CliArgs {
     bool graph = false;
     std::string input_path = "catalyst.build";
     std::string estimates_file = "catalyst.estimates";
-    std::filesystem::path work_dir = std::filesystem::current_path();
+    std::filesystem::path work_dir = ".";
 };
 
 catalyst::Result<CliArgs> CLIArgs(int argc, const char * const *argv);
@@ -97,9 +97,7 @@ int main(const int argc, const char *const *argv) {
 
 catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
     CliArgs par;
-    catalyst::ExecutorConfig config;
 
-    std::filesystem::path work_dir = ".";
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
         if (arg == "-h" || arg == "--help") {
@@ -110,12 +108,12 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
             printVersion();
             return std::unexpected("");
         }
-        if (arg == "-d") {
+        if (arg == "-C") {
             if (i + 1 < argc) {
-                work_dir = argv[i + 1];
+                par.work_dir = argv[i + 1];
                 i++;
             } else {
-                return std::unexpected("Missing argument for -d");
+                return std::unexpected("Missing argument for -C");
             }
         } else if (arg == "-f") {
             if (i + 1 < argc) {
@@ -125,7 +123,7 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
             } else {
                 return std::unexpected("Missing argument for -f");
             }
-        } else if (arg == "-e") {
+        } else if (arg == "--estimates") {
             if (i + 1 < argc) {
                 par.estimates_file = argv[i + 1];
                 par.config.estimates_file = par.estimates_file;
@@ -133,7 +131,7 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
             } else {
                 return std::unexpected("Missing argument for -e");
             }
-        } else if (arg == "--dry-run") {
+        } else if (arg == "-n" || arg == "--dry-run") {
             par.config.dry_run = true;
         } else if (arg == "--clean") {
             par.config.clean = true;
