@@ -40,15 +40,15 @@ public:
             throw std::runtime_error("Failed to open file: " + path.string());
         }
 
-        LARGE_INTEGER file_size;
-        if (!GetFileSizeEx(file_handle_, &file_size)) {
+        LARGE_INTEGER size_li;
+        if (!GetFileSizeEx(file_handle_, &size_li)) {
             CloseHandle(file_handle_);
             throw std::runtime_error("Failed to stat file: " + path.string());
         }
-        size_ = static_cast<size_t>(file_size.QuadPart);
+        file_size = static_cast<size_t>(size_li.QuadPart);
 
-        if (size_ == 0) {
-            data_ = nullptr;
+        if (file_size == 0) {
+            file_data = nullptr;
             CloseHandle(file_handle_);
             file_handle_ = INVALID_HANDLE_VALUE;
             return;
@@ -66,46 +66,46 @@ public:
             CloseHandle(file_handle_);
             throw std::runtime_error("Failed to map view of file: " + path.string());
         }
-        data_ = static_cast<char *>(addr);
+        file_data = static_cast<char *>(addr);
 #else
-        fd_ = open(path.c_str(), O_RDONLY);
-        if (fd_ == -1) {
+        file_descriptor = open(path.c_str(), O_RDONLY);
+        if (file_descriptor == -1) {
             throw std::runtime_error("Failed to open file: " + path.string());
         }
 
-        struct stat sb;
-        if (fstat(fd_, &sb) == -1) {
-            close(fd_);
+        struct stat sb{};
+        if (fstat(file_descriptor, &sb) == -1) {
+            close(file_descriptor);
             throw std::runtime_error("Failed to stat file: " + path.string());
         }
-        size_ = static_cast<size_t>(sb.st_size);
+        file_size = static_cast<size_t>(sb.st_size);
 
-        if (size_ == 0) {
-            data_ = nullptr;
+        if (file_size == 0) {
+            file_data = nullptr;
             return;
         }
 
-        posix_fadvise(fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
+        posix_fadvise(file_descriptor, 0, 0, POSIX_FADV_SEQUENTIAL);
 
 #ifdef __linux__
         int flags = populate ? (MAP_POPULATE | MAP_PRIVATE) : MAP_PRIVATE;
-        void *addr = mmap(nullptr, size_, PROT_READ, flags, fd_, 0);
+        void *addr = mmap(nullptr, file_size, PROT_READ, flags, file_descriptor, 0);
 #else
-        void *addr = mmap(nullptr, size_, PROT_READ, MAP_PRIVATE, fd_, 0);
+        void *addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, file_descriptor, 0);
 #endif
 
         if (addr == MAP_FAILED) {
-            close(fd_);
+            close(file_descriptor);
             throw std::runtime_error("Failed to mmap file: " + path.string());
         }
-        data_ = static_cast<char *>(addr);
+        file_data = static_cast<char *>(addr);
 #endif
     }
 
     ~MappedFile() {
 #ifdef _WIN32
-        if (data_) {
-            UnmapViewOfFile(data_);
+        if (file_data) {
+            UnmapViewOfFile(file_data);
         }
         if (mapping_handle_) {
             CloseHandle(mapping_handle_);
@@ -114,19 +114,19 @@ public:
             CloseHandle(file_handle_);
         }
 #else
-        if (data_) {
-            munmap(data_, size_);
+        if (file_data) {
+            munmap(file_data, file_size);
         }
-        if (fd_ != -1) {
-            close(fd_);
+        if (file_descriptor != -1) {
+            close(file_descriptor);
         }
 #endif
     }
 
-    std::string_view content() const {
-        if (!data_)
+    [[nodiscard]] std::string_view content() const {
+        if (!file_data)
             return {};
-        return {data_, size_};
+        return {file_data, file_size};
     }
 
     MappedFile(MappedFile &&other) noexcept = default;
@@ -139,10 +139,10 @@ private:
     HANDLE file_handle_ = INVALID_HANDLE_VALUE;
     HANDLE mapping_handle_ = nullptr;
 #else
-    int fd_ = -1;
+    int file_descriptor = -1;
 #endif
-    char *data_ = nullptr;
-    size_t size_ = 0;
+    char *file_data = nullptr;
+    size_t file_size = 0;
 };
 
 class MappedUnfaultedFile : public MappedFile {
