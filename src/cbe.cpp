@@ -114,7 +114,7 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
         }
         if (arg == "-C") {
             if (i + 1 < argc) {
-                par.work_dir = argv[i + 1];
+                par.work_dir = argv[++i];
             } else {
                 return std::unexpected("Missing argument for -C");
             }
@@ -163,7 +163,7 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
                                                   std::string_view(pos + 1, arg.end()));
         } else {
             return std::unexpected(
-                std::format("Unknown argument: {}. Run {} --help for more information.", argv[0], arg));
+                std::format("Unknown argument: {}. Run {} --help for more information.", arg, argv[0]));
         }
     }
     return par;
