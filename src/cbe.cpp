@@ -2,6 +2,7 @@
 #include "cbe/executor.hpp"
 #include "cbe/parser.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cstring>
 #include <filesystem>
@@ -9,6 +10,7 @@
 #include <iostream>
 #include <print>
 #include <string>
+#include <string_view>
 
 void printHelp() {
     std::println("Usage: cbe [options]");
@@ -38,6 +40,7 @@ struct CliArgs {
     std::string input_path = "catalyst.build";
     std::string estimates_file = "catalyst.estimates";
     std::filesystem::path work_dir = ".";
+    std::vector<std::pair<std::string_view, std::string_view>> definition_overrides;
 };
 
 catalyst::Result<CliArgs> CLIArgs(int argc, const char *const *argv);
@@ -48,7 +51,7 @@ int main(const int argc, const char *const *argv) {
         std::println(std::cerr, "{}", res.error());
         return 1;
     }
-    const auto [config, compdb, graph, input_path, estimates_file, work_dir] = *res;
+    const auto [config, compdb, graph, input_path, estimates_file, work_dir, definition_overrides] = *res;
 
     if (work_dir != ".") {
         std::error_code ec;
@@ -69,6 +72,10 @@ int main(const int argc, const char *const *argv) {
     if (auto res = catalyst::parse(builder, input_path); !res) {
         std::println(std::cerr, "Failed to parse: {}", res.error());
         return 1;
+    }
+
+    for (const auto &[varaible, value] : definition_overrides) {
+        builder.add_definition(varaible, value);
     }
 
     catalyst::Executor executor{std::move(builder), config};
@@ -108,25 +115,23 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
         if (arg == "-C") {
             if (i + 1 < argc) {
                 par.work_dir = argv[i + 1];
-                i++;
             } else {
                 return std::unexpected("Missing argument for -C");
             }
         } else if (arg == "-f") {
             if (i + 1 < argc) {
-                par.input_path = argv[i + 1];
+                par.input_path = argv[++i];
                 par.config.build_file = par.input_path;
-                i++;
-            } else {
-                return std::unexpected("Missing argument for -f");
+                continue;
             }
+            return std::unexpected("Missing argument for -f");
         } else if (arg == "--estimates") {
             if (i + 1 < argc) {
                 par.estimates_file = argv[i + 1];
                 par.config.estimates_file = par.estimates_file;
                 i++;
             } else {
-                return std::unexpected("Missing argument for -e");
+                return std::unexpected("Missing argument for --estimates");
             }
         } else if (arg == "-n" || arg == "--dry-run") {
             par.config.dry_run = true;
@@ -153,6 +158,9 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
             par.config.silent = true;
         } else if (arg == "-k" || arg == "--keep-going") {
             par.config.keep_going = true;
+        } else if (const std::string_view::iterator pos = std::ranges::find(arg, '='); pos != arg.end()) {
+            par.definition_overrides.emplace_back(std::string_view(arg.begin(), pos),
+                                                  std::string_view(pos + 1, arg.end()));
         } else {
             return std::unexpected(
                 std::format("Unknown argument: {}. Run {} --help for more information.", argv[0], arg));
