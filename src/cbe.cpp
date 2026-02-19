@@ -16,12 +16,14 @@ void printHelp() {
     std::println("  -h, --help                    Show this help message");
     std::println("  -v, --version                 Show version");
     std::println("  -C <dir>                      Change working directory before doing anything");
-    std::println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
     std::println("  -f <file>                     Use <file> as the build manifest (default: catalyst.build)");
     std::println("  -j, --jobs <N>                Set number of parallel jobs (default: auto)");
+    std::println("  -k, --keep-going              Continue the build after error (default: false)");
     std::println("  -n, --dry-run                 Print commands without executing them");
+    std::println("  -s, --silent                  Suppress cli output, only print errors");
     std::println("  --clean                       Remove build artifacts");
     std::println("  --compdb                      Generate compile_commands.json");
+    std::println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
     std::println("  --graph                       Generate DOT graph of build");
 }
 
@@ -38,7 +40,7 @@ struct CliArgs {
     std::filesystem::path work_dir = ".";
 };
 
-catalyst::Result<CliArgs> CLIArgs(int argc, const char * const *argv);
+catalyst::Result<CliArgs> CLIArgs(int argc, const char *const *argv);
 
 int main(const int argc, const char *const *argv) {
     auto res = CLIArgs(argc, argv);
@@ -61,11 +63,6 @@ int main(const int argc, const char *const *argv) {
 
     if (!std::filesystem::exists(input_path)) {
         std::println(std::cerr, "Build File: {} does not exist.", input_path);
-        return 1;
-    }
-    if (std::filesystem::is_symlink(input_path)) {
-        // FIXME: figure out __how__ to support.
-        std::println(std::cerr, "cbe does not support parsing symbolically linked files.");
         return 1;
     }
 
@@ -152,8 +149,13 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
             } else {
                 return std::unexpected(std::format("Missing argument for {}", arg));
             }
+        } else if (arg == "-s" || arg == "--silent") {
+            par.config.silent = true;
+        } else if (arg == "-k" || arg == "--keep-going") {
+            par.config.keep_going = true;
         } else {
-            return std::unexpected(std::format("Unknown argument: {}. Run {} --help for more information.", argv[0], arg));
+            return std::unexpected(
+                std::format("Unknown argument: {}. Run {} --help for more information.", argv[0], arg));
         }
     }
     return par;

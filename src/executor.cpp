@@ -1,6 +1,7 @@
 #include "cbe/executor.hpp"
 
 #include "cbe/builder.hpp"
+#include "cbe/domain.hpp"
 #include "cbe/process_exec.hpp"
 #include "cbe/utility.hpp"
 #include "nlohmann/json_fwd.hpp"
@@ -158,7 +159,8 @@ bool inline Executor::needs_rebuild(const BuildStep &step, StatCache &stat_cache
             if (stat_cache.changed_since(std::filesystem::path(dep), output_modtime)) {
                 return true;
             }
-        } }
+        }
+    }
     if (step.opaque_inputs.has_value()) {
         for (const auto &opaque : *step.opaque_inputs) {
             if (stat_cache.changed_since(std::filesystem::path(opaque), output_modtime)) {
@@ -296,6 +298,9 @@ Result<void> Executor::execute() {
         return {};
 
     auto print_message = [&](const BuildStep &step) {
+        if (config.silent) {
+            return;
+        }
         // NOLINTBEGIN(performance-avoid-endl)
         std::lock_guard lock(cout_tty_mtx);
         tty << "\033[1m" << std::flush;
@@ -454,7 +459,11 @@ Result<void> Executor::execute() {
 
                 if (result != 0) {
                     error_occurred = true;
-                    completed_count = total_nodes; // Force exit
+                    if (!config.keep_going) {
+                        completed_count = total_nodes; // Force exit
+                    } else {
+                        completed_count.fetch_add(1, std::memory_order_relaxed);
+                    }
                 } else {
                     completed_count.fetch_add(1, std::memory_order_relaxed);
                     const auto &node = build_graph.nodes()[node_idx];
