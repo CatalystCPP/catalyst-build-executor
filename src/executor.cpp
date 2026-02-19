@@ -297,21 +297,104 @@ Result<void> Executor::execute() {
     if (total_nodes == 0)
         return {};
 
+    auto build_command_args = [&](const BuildStep &step, bool dry_run_mode) -> std::vector<std::string> {
+        std::vector<std::string> args;
+        static constexpr auto ARGS_VEC_INIT_SZ = 40;
+        args.reserve(ARGS_VEC_INIT_SZ);
+
+        auto add_parts = [&args](const auto &parts) {
+            args.reserve(args.size() + parts.size());
+            for (const auto &part : parts) {
+                if (part.begin() != part.end()) {
+                    args.push_back(std::ranges::to<std::string>(part));
+                }
+            }
+        };
+
+        const auto &inputs = step.parsed_inputs;
+
+        if (step.tool == "cc") {
+            add_parts(cc_vec);
+            add_parts(cflags_vec);
+            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        } else if (step.tool == "cxx") {
+            add_parts(cxx_vec);
+            add_parts(cxxflags_vec);
+            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        } else if (step.tool == "ld") {
+            add_parts(cxx_vec);
+            static constexpr auto TUNABLE_INPUT_SZ = 50;
+            std::filesystem::path rsp_path = std::filesystem::path(step.output).replace_extension(".rsp");
+
+            bool use_rsp = false;
+            if (std::filesystem::exists(rsp_path) && isNewer(rsp_path, config.build_file)) {
+                use_rsp = true;
+            } else if (inputs.size() > TUNABLE_INPUT_SZ) {
+                use_rsp = true;
+                if (!dry_run_mode) {
+                    std::string rsp_content;
+                    constexpr auto TUNABLE_RSP_PATH_ESTIMATE = 100;
+                    rsp_content.reserve(inputs.size() * TUNABLE_RSP_PATH_ESTIMATE);
+                    for (const auto &input : inputs) {
+                        rsp_content += input;
+                        rsp_content += '\n';
+                    }
+                    std::ofstream rsp_file(rsp_path);
+                    rsp_file.write(rsp_content.data(), static_cast<long>(rsp_content.size()));
+                }
+            }
+
+            if (use_rsp) {
+                 args.push_back(std::string("@") + rsp_path.string());
+            } else {
+                for (const auto &in : inputs)
+                    args.emplace_back(in);
+            }
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+            add_parts(ldflags_vec);
+            add_parts(ldlibs_vec);
+        } else if (step.tool == "ar") {
+            args.insert(args.end(), {"ar", "rcs", std::string(step.output)});
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+        } else if (step.tool == "sld") {
+            add_parts(cxx_vec);
+            args.emplace_back("-shared");
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        }
+        return args;
+    };
+
     auto print_message = [&](const BuildStep &step) {
         if (config.silent) {
             return;
         }
+
         // NOLINTBEGIN(performance-avoid-endl)
         std::lock_guard lock(cout_tty_mtx);
-        tty << "\033[1m" << std::flush;
-        if (config.dry_run)
-            std::cout << "[DRY RUN] " << std::flush;
-        else
-            std::cout << "[" << completed_count + 1 << "/" << total_nodes << "] " << std::flush;
-        tty << "\033[0m\033[1;32m" << std::flush;
-        std::cout << std::setw(3) << step.tool << std::flush;
-        tty << "\033[0m\033[0m" << std::flush;
-        std::cout << " -> " << step.output << std::endl;
+        if (config.dry_run) {
+            std::cout << "[DRY RUN] " << step.tool << " -> " << step.output << '\n';
+            auto args = build_command_args(step, true);
+            for (size_t i = 0; i < args.size(); ++i) {
+                std::cout << args[i] << (i == args.size() - 1 ? "" : " ");
+            }
+            std::cout << "\n";
+        } else {
+            std::cout << "[" << completed_count + 1 << "/" << total_nodes << "] " << std::setw(3) << step.tool
+                      << std::flush << " -> " << step.output << std::endl;
+        }
         // NOLINTEND(performance-avoid-endl)
     };
 
@@ -320,78 +403,13 @@ Result<void> Executor::execute() {
         const auto &node = build_graph.nodes()[node_idx];
         if (node.step_id.has_value()) {
             const auto &step = build_graph.steps()[*node.step_id];
-            const auto &inputs = step.parsed_inputs;
 
             if (needs_rebuild(step, stat_cache)) {
                 print_message(step);
                 if (config.dry_run)
                     return 0;
 
-                static constexpr auto ARGS_VEC_INIT_SZ = 40;
-                std::vector<std::string> args;
-                args.reserve(ARGS_VEC_INIT_SZ);
-                auto add_parts = [&args](const auto &parts) {
-                    args.reserve(args.size() + parts.size());
-                    for (const auto &part : parts) {
-                        if (part.begin() != part.end()) {
-                            args.push_back(std::ranges::to<std::string>(part));
-                        }
-                    }
-                };
-
-                if (step.tool == "cc") {
-                    add_parts(cc_vec);
-                    add_parts(cflags_vec);
-                    args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
-                    for (const auto &in : inputs)
-                        args.emplace_back(in);
-                    args.emplace_back("-o");
-                    args.emplace_back(step.output);
-                } else if (step.tool == "cxx") {
-                    add_parts(cxx_vec);
-                    add_parts(cxxflags_vec);
-                    args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
-                    for (const auto &in : inputs)
-                        args.emplace_back(in);
-                    args.emplace_back("-o");
-                    args.emplace_back(step.output);
-                } else if (step.tool == "ld") {
-                    add_parts(cxx_vec);
-                    static constexpr auto TUNABLE_INPUT_SZ = 50;
-                    std::filesystem::path rsp_path = std::filesystem::path(step.output).replace_extension(".rsp");
-                    if (std::filesystem::exists(rsp_path) && isNewer(rsp_path, config.build_file)) {
-                        args.push_back(std::string("@") + rsp_path.string());
-                    } else if (inputs.size() > TUNABLE_INPUT_SZ) {
-                        std::string rsp_content;
-                        constexpr auto TUNABLE_RSP_PATH_ESTIMATE = 100;
-                        rsp_content.reserve(inputs.size() * TUNABLE_RSP_PATH_ESTIMATE);
-                        for (const auto &input : inputs) {
-                            rsp_content += input;
-                            rsp_content += '\n';
-                        }
-                        std::ofstream rsp_file(rsp_path);
-                        rsp_file.write(rsp_content.data(), static_cast<long>(rsp_content.size()));
-                        args.push_back(std::string("@") + rsp_path.string());
-                    } else {
-                        for (const auto &in : inputs)
-                            args.emplace_back(in);
-                    }
-                    args.emplace_back("-o");
-                    args.emplace_back(step.output);
-                    add_parts(ldflags_vec);
-                    add_parts(ldlibs_vec);
-                } else if (step.tool == "ar") {
-                    args.insert(args.end(), {"ar", "rcs", std::string(step.output)});
-                    for (const auto &in : inputs)
-                        args.emplace_back(in);
-                } else if (step.tool == "sld") {
-                    add_parts(cxx_vec);
-                    args.emplace_back("-shared");
-                    for (const auto &in : inputs)
-                        args.emplace_back(in);
-                    args.emplace_back("-o");
-                    args.emplace_back(step.output);
-                }
+                auto args = build_command_args(step, false);
 
 #if FF_cbe__profiling
                 auto start = std::chrono::steady_clock::now();
