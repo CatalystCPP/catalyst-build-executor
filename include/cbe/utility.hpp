@@ -1,7 +1,8 @@
 #pragma once
 #include <expected>
+#include <format>
 #include <string>
 
 namespace catalyst {
-template <typename T> using Result = std::expected<T, std::string>;
-}
+template <typename Value_T> using Result = std::expected<Value_T, std::string>;
+} // namespace catalyst

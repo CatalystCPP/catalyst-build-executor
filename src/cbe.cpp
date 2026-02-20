@@ -9,24 +9,25 @@
 #include <format>
 #include <iostream>
 #include <print>
-#include <string>
 #include <string_view>
+#include <utility>
 
 void printHelp() {
-    std::println("Usage: cbe [options]");
-    std::println("Options:");
-    std::println("  -h, --help                    Show this help message");
-    std::println("  -v, --version                 Show version");
-    std::println("  -C <dir>                      Change working directory before doing anything");
-    std::println("  -f <file>                     Use <file> as the build manifest (default: catalyst.build)");
-    std::println("  -j, --jobs <N>                Set number of parallel jobs (default: auto)");
-    std::println("  -k, --keep-going              Continue the build after error (default: false)");
-    std::println("  -n, --dry-run                 Print commands without executing them");
-    std::println("  -s, --silent                  Suppress cli output, only print errors");
-    std::println("  --clean                       Remove build artifacts");
-    std::println("  --compdb                      Generate compile_commands.json");
-    std::println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
-    std::println("  --graph                       Generate DOT graph of build");
+    using std::println;
+    println("Usage: cbe [options]");
+    println("Options:");
+    println("  -h, --help                    Show this help message");
+    println("  -v, --version                 Show version");
+    println("  -C <dir>                      Change working directory before doing anything");
+    println("  -f <file>                     Use <file> as the build manifest (default: catalyst.build)");
+    println("  -j, --jobs <N>                Set number of parallel jobs (default: auto)");
+    println("  -k, --keep-going              Continue the build after error (default: false)");
+    println("  -n, --dry-run                 Print commands without executing them");
+    println("  -s, --silent                  Suppress cli output, only print errors");
+    println("  --clean                       Remove build artifacts");
+    println("  --compdb                      Generate compile_commands.json");
+    println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
+    println("  --graph                       Generate DOT graph of build");
 }
 
 void printVersion() {
@@ -37,21 +38,22 @@ struct CliArgs {
     catalyst::ExecutorConfig config;
     bool compdb = false;
     bool graph = false;
-    std::string input_path = "catalyst.build";
-    std::string estimates_file = "catalyst.estimates";
     std::filesystem::path work_dir = ".";
     std::vector<std::pair<std::string_view, std::string_view>> definition_overrides;
 };
 
-catalyst::Result<CliArgs> CLIArgs(int argc, const char *const *argv);
+catalyst::Result<CliArgs> cliArgs(int argc, const char *const *argv);
 
 int main(const int argc, const char *const *argv) {
-    auto res = CLIArgs(argc, argv);
+    auto res = cliArgs(argc, argv);
     if (!res) {
-        std::println(std::cerr, "{}", res.error());
-        return 1;
+        if (res.error() != "") {
+            std::cerr << res.error() << '\n';
+            return 1;
+        }
+        return 0;
     }
-    const auto [config, compdb, graph, input_path, estimates_file, work_dir, definition_overrides] = *res;
+    const auto [config, compdb, graph, work_dir, definition_overrides] = *res;
 
     if (work_dir != ".") {
         std::error_code ec;
@@ -64,18 +66,18 @@ int main(const int argc, const char *const *argv) {
 
     catalyst::CBEBuilder builder;
 
-    if (!std::filesystem::exists(input_path)) {
-        std::println(std::cerr, "Build File: {} does not exist.", input_path);
+    if (!std::filesystem::exists(config.build_file)) {
+        std::println(std::cerr, "Build File: {} does not exist.", config.build_file);
         return 1;
     }
 
-    if (auto res = catalyst::parse(builder, input_path); !res) {
+    if (auto res = catalyst::parse(builder, config.build_file); !res) {
         std::println(std::cerr, "Failed to parse: {}", res.error());
         return 1;
     }
 
-    for (const auto &[varaible, value] : definition_overrides) {
-        builder.add_definition(varaible, value);
+    for (const auto &[variable, value] : definition_overrides) {
+        builder.add_definition(variable, value);
     }
 
     catalyst::Executor executor{std::move(builder), config};
@@ -99,41 +101,56 @@ int main(const int argc, const char *const *argv) {
     return 0;
 }
 
-catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
+catalyst::Result<CliArgs> cliArgs(const int argc, const char *const *argv) {
+    using std::format;
+    using std::unexpected;
+
     CliArgs par;
+
+    auto set_next_arg = [&argc, &argv](auto &ref, int &i) -> bool {
+        if (i + 1 >= argc)
+            return false;
+        ref = argv[++i];
+        return true;
+    };
 
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
         if (arg == "-h" || arg == "--help") {
             printHelp();
-            return std::unexpected("");
+            return unexpected("");
         }
         if (arg == "-v" || arg == "--version") {
             printVersion();
-            return std::unexpected("");
+            return unexpected("");
         }
         if (arg == "-C") {
-            if (i + 1 < argc) {
-                par.work_dir = argv[++i];
-            } else {
-                return std::unexpected("Missing argument for -C");
+            if (!set_next_arg(par.work_dir, i))
+                return unexpected(format("Missing argument for {}", arg));
+            continue;
+        }
+        if (arg == "-f") {
+            if (!set_next_arg(par.config.build_file, i))
+                return unexpected(format("Missing argument for {}", arg));
+            continue;
+        }
+        if (arg == "--estimates") {
+            if (!set_next_arg(par.config.estimates_file, i))
+                return unexpected(format("Missing argument for {}", arg));
+            continue;
+        }
+        if (arg == "-j" || arg == "--jobs") {
+            if (i + 1 >= argc) {
+                return unexpected(format("Missing argument for {}", arg));
             }
-        } else if (arg == "-f") {
-            if (i + 1 < argc) {
-                par.input_path = argv[++i];
-                par.config.build_file = par.input_path;
-                continue;
+            i++;
+            auto res = std::from_chars(argv[i], argv[i] + strlen(argv[i]), par.config.jobs);
+            if (res.ec != std::errc()) {
+                return unexpected(format("Invalid job count: {}", argv[i]));
             }
-            return std::unexpected("Missing argument for -f");
-        } else if (arg == "--estimates") {
-            if (i + 1 < argc) {
-                par.estimates_file = argv[i + 1];
-                par.config.estimates_file = par.estimates_file;
-                i++;
-            } else {
-                return std::unexpected("Missing argument for --estimates");
-            }
-        } else if (arg == "-n" || arg == "--dry-run") {
+            continue;
+        }
+        if (arg == "-n" || arg == "--dry-run") {
             par.config.dry_run = true;
         } else if (arg == "--clean") {
             par.config.clean = true;
@@ -141,19 +158,6 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
             par.compdb = true;
         } else if (arg == "--graph") {
             par.graph = true;
-        } else if (arg == "-j" || arg == "--jobs") {
-            if (i + 1 < argc) {
-                size_t jobs = 0;
-                auto res = std::from_chars(argv[i + 1], argv[i + 1] + strlen(argv[i + 1]), jobs);
-                if (res.ec == std::errc()) {
-                    par.config.jobs = jobs;
-                    i++;
-                } else {
-                    return std::unexpected(std::format("Invalid job count: {}", argv[i + 1]));
-                }
-            } else {
-                return std::unexpected(std::format("Missing argument for {}", arg));
-            }
         } else if (arg == "-s" || arg == "--silent") {
             par.config.silent = true;
         } else if (arg == "-k" || arg == "--keep-going") {
@@ -162,8 +166,7 @@ catalyst::Result<CliArgs> CLIArgs(const int argc, const char *const *argv) {
             par.definition_overrides.emplace_back(std::string_view(arg.begin(), pos),
                                                   std::string_view(pos + 1, arg.end()));
         } else {
-            return std::unexpected(
-                std::format("Unknown argument: {}. Run {} --help for more information.", arg, argv[0]));
+            return unexpected(format("Unknown argument: {}. Run {} --help for more information.", arg, argv[0]));
         }
     }
     return par;
