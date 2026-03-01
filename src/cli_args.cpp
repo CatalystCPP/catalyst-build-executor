@@ -55,12 +55,21 @@ Result<CliArgs> cliArgs(const int argc, const char *const *argv) {
         }
         if (arg == "-n" || arg == "--dry-run") {
             par.config.dry_run = true;
-        } else if (arg == "--clean") {
-            par.config.clean = true;
-        } else if (arg == "--compdb") {
-            par.compdb = true;
-        } else if (arg == "--graph") {
-            par.graph = true;
+        } else if (arg == "-t") {
+            std::string_view tool;
+            if (i + 1 >= argc) {
+                return unexpected(format("Missing argument for {}", arg));
+            }
+            tool = argv[++i];
+            if (tool == "clean") {
+                par.config.clean = true;
+            } else if (tool == "compdb") {
+                par.compdb = true;
+            } else if (tool == "graph") {
+                par.graph = true;
+            } else {
+                return unexpected(format("Unknown tool: {}", tool));
+            }
         } else if (arg == "-s" || arg == "--silent") {
             par.config.silent = true;
         } else if (arg == "-k" || arg == "--keep-going") {
@@ -87,10 +96,11 @@ void printHelp() {
     println("  -k, --keep-going              Continue the build after error (default: false)");
     println("  -n, --dry-run                 Print commands without executing them");
     println("  -s, --silent                  Suppress cli output, only print errors");
-    println("  --clean                       Remove build artifacts");
-    println("  --compdb                      Generate compile_commands.json");
+    println("  -t <tool>                     Run a subtool. Valid tools are:");
+    println("                                  clean    - remove build artifacts");
+    println("                                  compdb   - generate compile_commands.json");
+    println("                                  graph    - generate DOT graph of build");
     println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
-    println("  --graph                       Generate DOT graph of build");
 }
 
 void printVersion() {
