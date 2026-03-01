@@ -67,6 +67,8 @@ Result<CliArgs> cliArgs(const int argc, const char *const *argv) {
                 par.compdb = true;
             } else if (tool == "graph") {
                 par.graph = true;
+            } else if (tool == "commands") {
+                par.commands = true;
             } else {
                 return unexpected(format("Unknown tool: {}", tool));
             }
@@ -100,6 +102,7 @@ void printHelp() {
     println("                                  clean    - remove build artifacts");
     println("                                  compdb   - generate compile_commands.json");
     println("                                  graph    - generate DOT graph of build");
+    println("                                  commands - print commands that would be executed");
     println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
 }
 

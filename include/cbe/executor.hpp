@@ -96,6 +96,12 @@ public:
      */
     Result<void> emit_graph();
 
+    /**
+     * @brief Prints the actual commands that would be executed to stdout.
+     * @return Success or error.
+     */
+    Result<void> emit_commands();
+
 private:
     bool needs_rebuild(const BuildStep &step, StatCache &stat_cache) const;
 

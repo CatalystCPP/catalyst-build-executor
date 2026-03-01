@@ -19,7 +19,7 @@ int main(const int argc, const char *const *argv) {
         }
         return 0;
     }
-    const auto [config, compdb, graph, work_dir, definition_overrides] = *res;
+    const auto [config, compdb, graph, commands, work_dir, definition_overrides] = *res;
 
     if (work_dir != ".") {
         std::error_code ec;
@@ -52,6 +52,8 @@ int main(const int argc, const char *const *argv) {
         auto _ = executor.emit_compdb();
     } else if (graph) {
         auto _ = executor.emit_graph();
+    } else if (commands) {
+        auto _ = executor.emit_commands();
     } else if (config.clean) {
         if (auto res = executor.clean(); !res) {
             std::println(std::cerr, "Clean failed: {}", res.error());

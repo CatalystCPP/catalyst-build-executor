@@ -231,6 +231,82 @@ Result<void> Executor::emit_compdb() {
     return {};
 }
 
+Result<void> Executor::emit_commands() {
+    catalyst::BuildGraph build_graph = builder.emit_graph();
+    std::vector<size_t> order;
+    auto res = build_graph.topo_sort();
+    if (!res)
+        return std::unexpected(res.error());
+    order = *res;
+
+    const auto cc_vec = builder.getDefinitionOf<std::vector<std::string>>("cc");
+    const auto cxx_vec = builder.getDefinitionOf<std::vector<std::string>>("cxx");
+    const auto cflags_vec = builder.getDefinitionOf<std::vector<std::string>>("cflags");
+    const auto cxxflags_vec = builder.getDefinitionOf<std::vector<std::string>>("cxxflags");
+
+    auto build_command_args_internal = [&](const BuildStep &step) -> std::vector<std::string> {
+        std::vector<std::string> args;
+        auto add_parts = [&args](const auto &parts) {
+            for (const auto &part : parts) {
+                if (part.begin() != part.end()) {
+                    args.push_back(std::ranges::to<std::string>(part));
+                }
+            }
+        };
+
+        const auto &inputs = step.parsed_inputs;
+
+        if (step.tool == "cc") {
+            add_parts(cc_vec);
+            add_parts(cflags_vec);
+            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        } else if (step.tool == "cxx") {
+            add_parts(cxx_vec);
+            add_parts(cxxflags_vec);
+            args.insert(args.end(), {"-MMD", "-MF", std::string(step.output) + ".d", "-c"});
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        } else if (step.tool == "ld") {
+            add_parts(cxx_vec);
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        } else if (step.tool == "ar") {
+            args.insert(args.end(), {"ar", "rcs", std::string(step.output)});
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+        } else if (step.tool == "sld") {
+            add_parts(cxx_vec);
+            args.emplace_back("-shared");
+            for (const auto &in : inputs)
+                args.emplace_back(in);
+            args.emplace_back("-o");
+            args.emplace_back(step.output);
+        }
+        return args;
+    };
+
+    for (size_t node_idx : order) {
+        const auto &node = build_graph.nodes()[node_idx];
+        if (!node.step_id.has_value())
+            continue;
+        const auto &step = build_graph.steps()[*node.step_id];
+        auto args = build_command_args_internal(step);
+        for (size_t i = 0; i < args.size(); ++i) {
+            std::cout << args[i] << (i == args.size() - 1 ? "" : " ");
+        }
+        std::cout << "\n";
+    }
+    return {};
+}
+
 Result<void> Executor::execute() {
     pool.clear(); // Ensure clean state
 
@@ -385,12 +461,7 @@ Result<void> Executor::execute() {
         // NOLINTBEGIN(performance-avoid-endl)
         std::lock_guard lock(cout_tty_mtx);
         if (config.dry_run) {
-            std::cout << "[DRY RUN] " << step.tool << " -> " << step.output << '\n';
-            auto args = build_command_args(step, true);
-            for (size_t i = 0; i < args.size(); ++i) {
-                std::cout << args[i] << (i == args.size() - 1 ? "" : " ");
-            }
-            std::cout << "\n";
+            std::cout << "[DRY RUN] " << step.tool << " -> " << step.output << std::endl;
         } else {
             std::cout << "[" << completed_count + 1 << "/" << total_nodes << "] " << std::setw(3) << step.tool
                       << std::flush << " -> " << step.output << std::endl;
