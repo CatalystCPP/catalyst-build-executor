@@ -59,11 +59,9 @@ int main(const int argc, const char *const *argv) {
             std::println(std::cerr, "Clean failed: {}", res.error());
             return 1;
         }
-    } else {
-        if (auto res = executor.execute(); !res) {
-            std::println(std::cerr, "Execution failed: {}", res.error());
-            return 1;
-        }
+    } else if (auto res = executor.execute(); !res) {
+        std::println(std::cerr, "Execution failed: {}", res.error());
+        return 1;
     }
 
     return 0;
