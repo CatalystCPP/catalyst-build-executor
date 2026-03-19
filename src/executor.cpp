@@ -117,7 +117,7 @@ bool isNewer(const std::filesystem::path &new_file, const std::filesystem::path 
 }
 
 Executor::Executor(CBEBuilder &&builder, const ExecutorConfig &config) : builder(std::move(builder)), config(config) {
-#if FF_cbe__work_estimates
+#if FF_cbe__estimates
     estimator = std::make_unique<WorkEstimate>(config.estimates_file);
 #endif
 }
@@ -340,7 +340,7 @@ Result<void> Executor::execute() {
 
     auto push_ready = [&](size_t idx) {
         size_t est = 0;
-#if FF_cbe__work_estimates
+#if FF_cbe__estimates
         const auto &node = build_graph.nodes()[idx];
         if (node.step_id.has_value()) {
             est = estimator->getWorkEstimate(build_graph.steps()[*node.step_id].output);

@@ -1,6 +1,6 @@
 #include "cbe/work_estimate.hpp"
 
-#if FF_cbe__work_estimates
+#if FF_cbe__estimates
 
 #include "cbe/file_handle.hpp"
 

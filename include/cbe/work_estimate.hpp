@@ -1,6 +1,6 @@
 #pragma once
 
-#if FF_cbe__work_estimates
+#if FF_cbe__estimates
 
 #include "cbe/file_handle.hpp"
 
