@@ -35,3 +35,4 @@ features:
   - binary: true
   - profiling: false
   - logging: false
+  - work_estimates: true

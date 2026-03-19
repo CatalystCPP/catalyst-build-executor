@@ -3,7 +3,9 @@
 #include "cbe/builder.hpp"
 #include "cbe/graph.hpp"
 #include "cbe/utility.hpp"
+#if FF_cbe__work_estimates
 #include "cbe/work_estimate.hpp"
+#endif
 
 #include <shared_mutex>
 #include <string>
@@ -55,7 +57,9 @@ struct ExecutorConfig {
     bool keep_going = false;                            ///< If true, continue building other steps after an error.
     size_t jobs = 0;                                   ///< Number of parallel jobs (0 = auto-detect).
     std::string build_file = "catalyst.build";         ///< Path to the build manifest.
+#if FF_cbe__work_estimates
     std::string estimates_file = "catalyst.estimates"; ///< Path to the work estimates file.
+#endif
 };
 
 /**
@@ -107,7 +111,9 @@ private:
 
     CBEBuilder builder;
     ExecutorConfig config;
+#if FF_cbe__work_estimates
     std::unique_ptr<WorkEstimate> estimator;
+#endif
     std::vector<std::jthread> pool;
 };
 } // namespace catalyst

@@ -1,5 +1,7 @@
 #pragma once
 
+#if FF_cbe__work_estimates
+
 #include "cbe/file_handle.hpp"
 
 #include <algorithm>
@@ -31,3 +33,5 @@ private:
     std::vector<EstimateEntry> estimates;
 };
 }; // namespace catalyst
+
+#endif

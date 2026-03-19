@@ -37,11 +37,13 @@ Result<CliArgs> cliArgs(const int argc, const char *const *argv) {
                 return unexpected(format("Missing argument for {}", arg));
             continue;
         }
+#if FF_cbe__work_estimates
         if (arg == "--estimates") {
             if (!set_next_arg(par.config.estimates_file, i))
                 return unexpected(format("Missing argument for {}", arg));
             continue;
         }
+#endif
         if (arg == "-j" || arg == "--jobs") {
             if (i + 1 >= argc) {
                 return unexpected(format("Missing argument for {}", arg));

@@ -1,5 +1,7 @@
 #include "cbe/work_estimate.hpp"
 
+#if FF_cbe__work_estimates
+
 #include "cbe/file_handle.hpp"
 
 #include <algorithm>
@@ -57,3 +59,5 @@ catalyst::WorkEstimate::WorkEstimate(const std::filesystem::path &path_to_estima
     }
     return 0;
 }
+
+#endif
