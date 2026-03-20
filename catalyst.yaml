@@ -28,11 +28,13 @@ dependencies:
     version: latest
     linkage: interface
 hooks:
-  post-generate:
-    - command: "command -v doxygen"
-    - command: "doxygen"
+  # post-generate:
+  #   - command: "command -v doxygen"
+  #   - command: "doxygen"
 features:
   - binary: true
   - profiling: false
   - logging: false
-  - estimates: false
+  - estimates:
+      default: false
+      files: ["src/work_estimate.cpp", "include/cbe/work_estimate.hpp"]
