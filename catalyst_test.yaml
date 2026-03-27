@@ -1,5 +1,0 @@
-manifest:
-  dirs:
-    source:
-      - tests
-    build: build_tests
