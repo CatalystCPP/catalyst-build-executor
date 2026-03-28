@@ -4,7 +4,7 @@ common:
   manifest:
     name: cbe
     type: BINARY
-    version: 0.1.0
+    version: 0.2.0
     description: The Catalyst Build Executor
     provides: cbe
     tooling:
@@ -57,3 +57,7 @@ ccache:
     tooling:
       CC_LAUNCHER: ccache
       CXX_LAUNCHER: ccache
+release:
+  manifest:
+    tooling:
+      LDFLAGS: -static
