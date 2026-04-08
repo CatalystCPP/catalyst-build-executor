@@ -28,10 +28,6 @@ common:
       triplet: x64-linux
       version: latest
       linkage: interface
-  hooks:
-    post-generate:
-      - command: "command -v doxygen"
-      - command: "doxygen"
   features:
     - binary: true
     - profiling: false
@@ -60,4 +56,9 @@ ccache:
 release:
   manifest:
     tooling:
-      LDFLAGS: -static
+      CCFLAGS: -O3 -DNDEBUG --std=c++23 -Wall -Wextra -Wpedantic
+      CXXFLAGS: -O3 -DNDEBUG --std=c++23 -Wall -Wextra -Wpedantic
+      LDFLAGS: -static -fuse-ld=mold -flto=full -Wl,-O3 -Wl,--gc-sections -Wl,--icf=safe -Wl,--as-needed -Wl, --no-undefined -Wl,-z,relro,-z,now -Wl,--hash-style=gnu -Wl,--build-id=sha1 -Wl,--strip-all
+  hooks:
+    post-build:
+      - catalyst: pack -p common release -a

@@ -60,6 +60,9 @@ struct ExecutorConfig {
 #if FF_cbe__estimates
     std::string estimates_file = "catalyst.estimates"; ///< Path to the work estimates file.
 #endif
+#if FF_cbe__logging
+    std::string build_log_file;                        ///< Path to emit build stdout/stderr.
+#endif
 };
 
 /**

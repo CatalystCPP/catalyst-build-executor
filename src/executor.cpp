@@ -7,9 +7,7 @@
 #include "nlohmann/json_fwd.hpp"
 
 #include <atomic>
-#if FF_cbe__profiling
 #include <chrono>
-#endif
 #include <condition_variable>
 #include <cstddef>
 #include <cstdio>
@@ -27,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <sys/mman.h>
+#include <unistd.h>
 #include <thread>
 #include <vector>
 
@@ -364,14 +363,34 @@ Result<void> Executor::execute() {
 
     StatCache stat_cache;
 
-#ifdef _WIN32
-    std::ofstream tty("CON");
-#elifdef _WIN64
-    std::ofstream tty("CON");
-#elifdef __linux__
-    std::ofstream tty("/dev/tty");
-#endif
     std::mutex cout_tty_mtx;
+    bool is_tty = ::isatty(STDOUT_FILENO) != 0;
+
+#if FF_cbe__logging
+    if (!config.build_log_file.empty()) {
+        std::ofstream log_file(config.build_log_file, std::ios::trunc);
+        if (!log_file) {
+            return std::unexpected(std::format("Failed to open build log file: {}", config.build_log_file));
+        }
+    }
+#endif
+
+    // Pre-count steps that need rebuilding and find final output target
+    size_t steps_to_build = 0;
+    std::string final_output_name;
+    for (size_t i = 0; i < build_graph.nodes().size(); ++i) {
+        const auto &node = build_graph.nodes()[i];
+        if (node.step_id.has_value()) {
+            const auto &step = build_graph.steps()[*node.step_id];
+            if (needs_rebuild(step, stat_cache)) {
+                steps_to_build++;
+            }
+            if (node.out_edges.empty()) {
+                final_output_name = step.output;
+            }
+        }
+    }
+    std::atomic<size_t> steps_completed = 0;
 
     // If graph is empty
     if (total_nodes == 0)
@@ -462,15 +481,18 @@ Result<void> Executor::execute() {
             return;
         }
 
-        // NOLINTBEGIN(performance-avoid-endl)
         std::lock_guard lock(cout_tty_mtx);
         if (config.dry_run) {
             std::cout << "[DRY RUN] " << step.tool << " -> " << step.output << std::endl;
         } else {
-            std::cout << "[" << completed_count + 1 << "/" << total_nodes << "] " << std::setw(3) << step.tool
-                      << std::flush << " -> " << step.output << std::endl;
+            auto current = steps_completed.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (is_tty) {
+                std::print("\r\033[K[{}/{}] {:>3} -> {}", current, steps_to_build, step.tool, step.output);
+                std::cout.flush();
+            } else {
+                std::println("[{}/{}] {:>3} -> {}", current, steps_to_build, step.tool, step.output);
+            }
         }
-        // NOLINTEND(performance-avoid-endl)
     };
 
     auto process_step = [&](size_t node_idx) {
@@ -489,7 +511,12 @@ Result<void> Executor::execute() {
 #if FF_cbe__profiling
                 auto start = std::chrono::steady_clock::now();
 #endif
-                auto res = catalyst::process_exec(std::move(args));
+#if FF_cbe__logging
+                bool capture_output = !config.build_log_file.empty();
+#else
+                bool capture_output = false;
+#endif
+                auto res = catalyst::process_exec(std::move(args), std::nullopt, std::nullopt, capture_output);
 #if FF_cbe__profiling
                 auto end = std::chrono::steady_clock::now();
                 std::chrono::duration<double> diff = end - start;
@@ -500,7 +527,25 @@ Result<void> Executor::execute() {
 #endif
 
                 if (res) {
-                    int ec = *res;
+                    auto [ec, output] = *res;
+#if FF_cbe__logging
+                    if (capture_output && !output.empty()) {
+                        std::lock_guard lock(cout_tty_mtx);
+                        if (!config.silent || ec != 0) {
+                            std::print("{}", output);
+                        }
+
+                        std::ofstream log_file(config.build_log_file, std::ios_base::app);
+                        if (log_file) {
+                            log_file << "=== " << step.tool << " -> " << step.output << " ===\n";
+                            log_file << output;
+                            if (output.back() != '\n') {
+                                log_file << '\n';
+                            }
+                            log_file << '\n';
+                        }
+                    }
+#endif
                     if (ec != 0) {
                         std::println(stderr, "Build failed: {} -> {} (exit code {})", step.tool, step.output, ec);
                         return ec;
@@ -599,11 +644,37 @@ Result<void> Executor::execute() {
 
     pool.clear(); // Join all threads
 
-    if (error_occurred)
+    if (error_occurred) {
+        if (!config.silent && is_tty && steps_completed > 0) {
+            std::print("\n");
+        }
         return std::unexpected("Build Failed");
+    }
 
-    if (completed_count != total_nodes)
+    if (completed_count != total_nodes) {
+        if (!config.silent && is_tty && steps_completed > 0) {
+            std::print("\n");
+        }
         return std::unexpected("Cycle detected: Build stalled with pending nodes.");
+    }
+
+    if (!config.silent && !final_output_name.empty()) {
+        auto now = std::chrono::system_clock::now();
+        auto now_ns = std::chrono::time_point_cast<std::chrono::nanoseconds>(now);
+        auto epoch_ns = now_ns.time_since_epoch().count();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm local_tm{};
+        localtime_r(&now_time, &local_tm);
+        auto subsec_ns = epoch_ns % 1'000'000'000;
+        auto timestamp = std::format("{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:09}",
+            local_tm.tm_year + 1900, local_tm.tm_mon + 1, local_tm.tm_mday,
+            local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec, subsec_ns);
+        if (is_tty) {
+            std::println("\r\033[K[{}] \033[32m[CBE FINISHED: {}]\033[0m", timestamp, final_output_name);
+        } else {
+            std::println("[{}] [CBE FINISHED: {}]", timestamp, final_output_name);
+        }
+    }
 
     return {};
 }

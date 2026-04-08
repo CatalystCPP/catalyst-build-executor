@@ -44,6 +44,13 @@ Result<CliArgs> cliArgs(const int argc, const char *const *argv) {
             continue;
         }
 #endif
+#if FF_cbe__logging
+        if (arg == "--build-log" || arg == "--error-log") {
+            if (!set_next_arg(par.config.build_log_file, i))
+                return unexpected(format("Missing argument for {}", arg));
+            continue;
+        }
+#endif
         if (arg == "-j" || arg == "--jobs") {
             if (i + 1 >= argc) {
                 return unexpected(format("Missing argument for {}", arg));
@@ -105,7 +112,12 @@ void printHelp() {
     println("                                  compdb   - generate compile_commands.json");
     println("                                  graph    - generate DOT graph of build");
     println("                                  commands - print commands that would be executed");
+#if FF_cbe__estimates
     println("  --estimates <estimate>        Use <estimate> as the estimate file (default: catalyst.estimates)");
+#endif
+#if FF_cbe__logging
+    println("  --build-log <file>            Log build stdout/stderr to <file>");
+#endif
 }
 
 void printVersion() {

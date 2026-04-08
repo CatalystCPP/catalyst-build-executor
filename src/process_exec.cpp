@@ -12,16 +12,23 @@
 #include <vector>
 
 namespace catalyst {
-Result<int> process_exec(std::vector<std::string> &&args,
+Result<std::pair<int, std::string>> process_exec(std::vector<std::string> &&args,
                          std::optional<std::string> working_dir,
-                         std::optional<std::unordered_map<std::string, std::string>> env) {
+                         std::optional<std::unordered_map<std::string, std::string>> env,
+                         bool capture_output) {
     if (args.empty()) {
         return std::unexpected("Cannot execute empty command");
     }
 
     reproc::options options;
-    options.redirect.out.type = reproc::redirect::parent;
-    options.redirect.err.type = reproc::redirect::parent;
+    std::string captured;
+    if (capture_output) {
+        options.redirect.out.type = reproc::redirect::pipe;
+        options.redirect.err.type = reproc::redirect::pipe;
+    } else {
+        options.redirect.out.type = reproc::redirect::parent;
+        options.redirect.err.type = reproc::redirect::parent;
+    }
 
     if (working_dir) {
         options.working_directory = working_dir->c_str();
@@ -41,10 +48,17 @@ Result<int> process_exec(std::vector<std::string> &&args,
         options.env.extra = env_ptrs.data();
     }
 
-    auto [status, ec] = reproc::run(args, options);
+    int status = 0;
+    std::error_code ec;
+    if (capture_output) {
+        reproc::sink::string sink(captured);
+        std::tie(status, ec) = reproc::run(args, options, sink, sink);
+    } else {
+        std::tie(status, ec) = reproc::run(args, options);
+    }
 
     if (ec)
-        return -1;
-    return status;
+        return std::pair<int, std::string>{-1, captured};
+    return std::pair<int, std::string>{status, captured};
 }
 } // namespace catalyst

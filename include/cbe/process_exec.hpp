@@ -4,6 +4,7 @@
 
 #include <future>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -14,9 +15,11 @@ namespace catalyst {
  * @param args The command line arguments (first argument is the executable).
  * @param working_dir Optional working directory for the subprocess.
  * @param env Optional environment variables to extend/override the parent environment.
- * @return The exit code of the process on success, or -1 on error.
+ * @param capture_output If true, captures and returns the combined stdout and stderr of the process.
+ * @return A pair containing the exit code of the process (or -1 on error) and the captured output (if requested).
  */
-Result<int> process_exec(std::vector<std::string> &&args,
+Result<std::pair<int, std::string>> process_exec(std::vector<std::string> &&args,
                          std::optional<std::string> working_dir = std::nullopt,
-                         std::optional<std::unordered_map<std::string, std::string>> env = std::nullopt);
+                         std::optional<std::unordered_map<std::string, std::string>> env = std::nullopt,
+                         bool capture_output = false);
 } // namespace catalyst
