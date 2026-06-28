@@ -30,7 +30,7 @@ bool stat_cache_test() {
     for (int i = 0; i < num_threads; ++i) {
         threads.emplace_back([&cache, &dummy_file]() {
             for (int j = 0; j < iterations; ++j) {
-                auto [time, ec] = cache.getOrUpdate(dummy_file);
+                auto [time, ec] = cache.getOrUpdate(dummy_file.string());
                 assert(!ec);
             }
         });

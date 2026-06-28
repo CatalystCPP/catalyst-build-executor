@@ -38,12 +38,12 @@ struct ToolchainFlags {
  */
 class StatCache {
     struct Entry {
-        std::filesystem::path path;
+        std::string path;
         std::filesystem::file_time_type time;
         std::error_code ec;
 
         bool operator<(const Entry &other) const;
-        bool operator<(const std::filesystem::path &other_path) const;
+        bool operator<(std::string_view other_path) const;
     };
 
     struct Bucket {
@@ -54,41 +54,14 @@ class StatCache {
     static constexpr size_t NUM_BUCKETS = 128;
     std::array<Bucket, NUM_BUCKETS> buckets;
 
-    [[nodiscard]] static size_t getBucketIndex(const std::filesystem::path &p) {
-        return std::hash<std::filesystem::path::string_type>{}(p.native()) % NUM_BUCKETS;
+    [[nodiscard]] static size_t getBucketIndex(std::string_view p) {
+        return std::hash<std::string_view>{}(p) % NUM_BUCKETS;
     }
 
 public:
-    /**
-     * @brief Retrieves the last write time for a path, caching the result.
-     * @param p The file path to check.
-     * @return A pair containing the last write time and any error code.
-     */
-    std::pair<std::filesystem::file_time_type, std::error_code> getOrUpdate(const std::filesystem::path &p);
-
-    /**
-     * @brief Checks if an input file has changed since a given output timestamp.
-     * @param input The input file path.
-     * @param output_time The timestamp of the output file.
-     * @return True if input is newer or stat failed, false otherwise.
-     */
-    bool changedSince(const std::filesystem::path &input, std::filesystem::file_time_type output_time);
-
-    /**
-     * @brief Drops any cached entry for a path so the next query re-stats the file.
-     *
-     * Must be called after a build step rewrites its output: an intermediate artifact
-     * (e.g. a `.o` or `.a`) is both the output of one step and the input of a downstream
-     * step, and its modtime may have been cached (with a now-stale value) before the
-     * rebuild. Without invalidation the downstream step would see the pre-build time and
-     * skip its own rebuild.
-     * @param p The file path to invalidate.
-     */
-    void invalidate(const std::filesystem::path &p);
-
-    /**
-     * @brief Returns the number of entries in the cache (primarily for unit tests).
-     */
+    std::pair<std::filesystem::file_time_type, std::error_code> getOrUpdate(std::string_view p);
+    bool changedSince(std::string_view input, std::filesystem::file_time_type output_time);
+    void invalidate(std::string_view p);
     [[nodiscard]] size_t getCacheSize() const;
 };
 

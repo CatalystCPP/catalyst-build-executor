@@ -254,7 +254,7 @@ bool inline Executor::needsRebuild(const BuildStep &step,
 
     if (step.depfile_inputs.has_value()) {
         for (const std::string_view &dep : step.depfile_inputs) {
-            if (stat_cache.changedSince(std::filesystem::path(dep), output_modtime)) {
+            if (stat_cache.changedSince(dep, output_modtime)) {
                 if (out_args) {
                     *out_args = std::move(args);
                 }
@@ -264,7 +264,7 @@ bool inline Executor::needsRebuild(const BuildStep &step,
     }
     if (step.opaque_inputs.has_value()) {
         for (const std::string_view &opaque : step.opaque_inputs) {
-            if (stat_cache.changedSince(std::filesystem::path(opaque), output_modtime)) {
+            if (stat_cache.changedSince(opaque, output_modtime)) {
                 if (out_args) {
                     *out_args = std::move(args);
                 }

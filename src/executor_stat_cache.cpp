@@ -8,11 +8,11 @@ using catalyst::StatCache;
 bool StatCache::Entry::operator<(const Entry &other) const {
     return path < other.path;
 }
-bool StatCache::Entry::operator<(const std::filesystem::path &other_path) const {
+bool StatCache::Entry::operator<(std::string_view other_path) const {
     return path < other_path;
 }
 
-auto StatCache::getOrUpdate(const std::filesystem::path &p)
+auto StatCache::getOrUpdate(std::string_view p)
     -> std::pair<std::filesystem::file_time_type, std::error_code> {
     size_t idx = getBucketIndex(p);
     Bucket &b = buckets[idx];
@@ -34,19 +34,19 @@ auto StatCache::getOrUpdate(const std::filesystem::path &p)
     }
 
     std::error_code ec;
-    std::filesystem::file_time_type time = std::filesystem::last_write_time(p, ec);
-    b.entries.insert(it, {.path=p, .time=time, .ec=ec});
+    std::filesystem::file_time_type time = std::filesystem::last_write_time(std::filesystem::path(p), ec);
+    b.entries.insert(it, {.path=std::string(p), .time=time, .ec=ec});
     return {time, ec};
 }
 
-bool StatCache::changedSince(const std::filesystem::path &input, std::filesystem::file_time_type output_time) {
+bool StatCache::changedSince(std::string_view input, std::filesystem::file_time_type output_time) {
     auto [input_time, ec] = getOrUpdate(input);
     if (ec)
         return true;
     return input_time >= output_time;
 }
 
-void StatCache::invalidate(const std::filesystem::path &p) {
+void StatCache::invalidate(std::string_view p) {
     size_t idx = getBucketIndex(p);
     Bucket &b = buckets[idx];
 
