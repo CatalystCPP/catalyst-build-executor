@@ -76,11 +76,11 @@ Result<void> parseBin(COBBuilder &builder) {
 
     const auto *header = reinterpret_cast<const BinHeader *>(content.data());
 #ifdef __linux__
-    if (std::memcmp(header->magic.data(), "CATBL002", BIN_HEADER_MAGIC_BIT_LEN) != 0) {
+    if (std::memcmp(header->magic.data(), "CATBL003", BIN_HEADER_MAGIC_BIT_LEN) != 0) {
 #elif defined(__APPLE__)
-    if (std::memcmp(header->magic.data(), "CATBM002", 8) != 0) {
+    if (std::memcmp(header->magic.data(), "CATBM003", 8) != 0) {
 #elif defined(_WIN32) || defined(_WIN64)
-    if (std::memcmp(header->magic.data(), "CATBW002", 8) != 0) {
+    if (std::memcmp(header->magic.data(), "CATBW003", 8) != 0) {
 #endif
         return std::unexpected("Invalid magic or version in .catalyst.bin");
     }
@@ -139,6 +139,8 @@ Result<void> parseBin(COBBuilder &builder) {
         ptr += sizeof(StringRef);
         StringRef output_ref = *reinterpret_cast<const StringRef *>(ptr);
         ptr += sizeof(StringRef);
+        StringRef extra_flags_ref = *reinterpret_cast<const StringRef *>(ptr);
+        ptr += sizeof(StringRef);
         uint64_t command_hash = *reinterpret_cast<const uint64_t *>(ptr);
         ptr += sizeof(uint64_t);
         uint64_t depfile_count = *reinterpret_cast<const uint64_t *>(ptr);
@@ -182,6 +184,7 @@ Result<void> parseBin(COBBuilder &builder) {
                          .opaque_inputs = std::move(opaque_inputs),
                          .depfile_inputs = std::move(depfile_inputs),
                          .parsed_inputs = std::move(parsed_inputs),
+                         .extra_flags = get_sv(extra_flags_ref),
                          .command_hash = command_hash});
     }
 
@@ -243,6 +246,7 @@ Result<void> emitBin(COBBuilder &builder) {
         StringRef tool_ref = sb.add(step.tool);
         StringRef inputs_ref = sb.add(step.inputs);
         StringRef output_ref = sb.add(step.output);
+        StringRef extra_flags_ref = sb.add(step.extra_flags);
 
         steps_buf.insert(steps_buf.end(),
                          reinterpret_cast<const char *>(&tool_ref),
@@ -253,6 +257,9 @@ Result<void> emitBin(COBBuilder &builder) {
         steps_buf.insert(steps_buf.end(),
                          reinterpret_cast<const char *>(&output_ref),
                          reinterpret_cast<const char *>(&output_ref) + sizeof(StringRef));
+        steps_buf.insert(steps_buf.end(),
+                         reinterpret_cast<const char *>(&extra_flags_ref),
+                         reinterpret_cast<const char *>(&extra_flags_ref) + sizeof(StringRef));
 
         uint64_t command_hash = step.command_hash;
         steps_buf.insert(steps_buf.end(),
@@ -276,11 +283,11 @@ Result<void> emitBin(COBBuilder &builder) {
 
     BinHeader header{};
 #ifdef __linux__
-    std::memcpy(header.magic.data(), "CATBL002", BIN_HEADER_MAGIC_BIT_LEN);
+    std::memcpy(header.magic.data(), "CATBL003", BIN_HEADER_MAGIC_BIT_LEN);
 #elif defined(__APPLE__)
-    std::memcpy(header.magic.data(), "CATBM002", 8);
+    std::memcpy(header.magic.data(), "CATBM003", 8);
 #elif defined(_WIN32) || defined(_WIN64)
-    std::memcpy(header.magic.data(), "CATBW002", 8);
+    std::memcpy(header.magic.data(), "CATBW003", 8);
 #endif
     header.num_definitions = bin_defs.size();
     header.num_nodes = nodes.size();
