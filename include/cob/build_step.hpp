@@ -38,6 +38,9 @@ struct BuildStep {
     /** @brief List of explicit input file paths parsed from the `inputs` string. */
     std::vector<std::string_view> parsed_inputs;
 
+    /** @brief Raw, space-separated extra args appended verbatim to the command. */
+    std::string_view extra_flags;
+
     /** @brief The hash of the fully-resolved command line used to generate the output of this step. */
     uint64_t command_hash = 0;
 };
