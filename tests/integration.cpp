@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <print>
 
@@ -114,6 +115,86 @@ bool rebuild_command_change_test() {
     return true;
 }
 
+bool build_step_extra_test() {
+    std::println("Starting BuildStepExtra Spacing and Compilation Test...");
+
+    // Test cases for invalid spacing
+    const std::vector<std::string> invalid_manifests = {
+        "cc|dummy_extra.c|dummy_extra.o|extra=-DEXTRA_TEST_FLAG",
+        "cc|dummy_extra.c|dummy_extra.o|extra =-DEXTRA_TEST_FLAG",
+        "cc|dummy_extra.c|dummy_extra.o|extra= -DEXTRA_TEST_FLAG",
+        "cc|dummy_extra.c|dummy_extra.o|invalid_key = -DEXTRA_TEST_FLAG",
+        "cc|dummy_extra.c|dummy_extra.o|extra"
+    };
+
+    for (const auto &manifest_content : invalid_manifests) {
+        std::ofstream out("catalyst.build");
+        out << manifest_content << "\n";
+        out.close();
+
+        COBBuilder builder;
+        auto res = parse(builder, "catalyst.build");
+        std::filesystem::remove("catalyst.build");
+        if (res) {
+            std::println(std::cerr, "Failed: Manifest parsed successfully but should have failed: {}", manifest_content);
+            return false;
+        }
+    }
+
+    // Test case for valid spacing and actual compilation success
+    std::ofstream src("dummy_extra.c");
+    src << "#ifndef EXTRA_TEST_FLAG\n#error \"EXTRA_TEST_FLAG not defined\"\n#endif\n";
+    src.close();
+
+    const std::vector<std::string> valid_manifests = {
+        "DEF|cc|clang\ncc|dummy_extra.c|dummy_extra.o|extra = -DEXTRA_TEST_FLAG",
+        "DEF|cc|clang\ncc|dummy_extra.c|dummy_extra.o|extra  =  -DEXTRA_TEST_FLAG",
+        "DEF|cc|clang\ncc|dummy_extra.c|dummy_extra.o|extra \t=\t -DEXTRA_TEST_FLAG"
+    };
+
+    for (const auto &manifest_content : valid_manifests) {
+        if (std::filesystem::exists("dummy_extra.o")) {
+            std::filesystem::remove("dummy_extra.o");
+        }
+        if (std::filesystem::exists("dummy_extra.o.d")) {
+            std::filesystem::remove("dummy_extra.o.d");
+        }
+
+        std::ofstream out("catalyst.build");
+        out << manifest_content << "\n";
+        out.close();
+
+        COBBuilder builder;
+        auto res = parse(builder, "catalyst.build");
+        if (!res) {
+            std::println(std::cerr, "Failed to parse valid manifest: {}", res.error());
+            std::filesystem::remove("catalyst.build");
+            std::filesystem::remove("dummy_extra.c");
+            return false;
+        }
+
+        Executor executor(std::move(builder), ExecutorConfig{});
+        auto exec_res = executor.execute();
+        std::filesystem::remove("catalyst.build");
+        if (!exec_res) {
+            std::println(std::cerr, "Execution failed for valid manifest: {}", exec_res.error());
+            std::filesystem::remove("dummy_extra.c");
+            return false;
+        }
+    }
+
+    // Cleanup
+    if (std::filesystem::exists("dummy_extra.c"))
+        std::filesystem::remove("dummy_extra.c");
+    if (std::filesystem::exists("dummy_extra.o"))
+        std::filesystem::remove("dummy_extra.o");
+    if (std::filesystem::exists("dummy_extra.o.d"))
+        std::filesystem::remove("dummy_extra.o.d");
+
+    std::println("BuildStepExtra Spacing and Compilation Test passed!");
+    return true;
+}
+
 bool integration_test() {
     // Setup
     std::println("Starting Integration Test...");
@@ -157,6 +238,11 @@ bool integration_test() {
         std::filesystem::remove("dummy.o.d");
     if (std::filesystem::exists("catalyst.build"))
         std::filesystem::remove("catalyst.build");
+
+    // Run BuildStepExtra spacing and compilation test
+    if (!build_step_extra_test()) {
+        return false;
+    }
 
     // Run command line/flag change rebuild test
     if (!rebuild_command_change_test()) {
