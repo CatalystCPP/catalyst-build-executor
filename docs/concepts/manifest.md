@@ -35,11 +35,12 @@ Format: `DEF|<var>|<val>`
 
 Build steps define the actions to transform input files into output files.
 
-Format: `<step_type>|<input_list>|<output_file>`
+Format: `<step_type>|<input_list>|<output_file>` or `<step_type>|<input_list>|<output_file>|extra = <extra_flags>`
 
 -   `<step_type>`: Mnemonic for the tool to use (see Toolchain Mapping).
 -   `<input_list>`: Comma-separated list of input files.
 -   `<output_file>`: The path to the generated file.
+-   `extra = <extra_flags>`: Optional step-specific flags/arguments. Requires mandatory spacing (at least one space/tab) before and after the `=` character.
 
 #### Toolchain Mapping
 

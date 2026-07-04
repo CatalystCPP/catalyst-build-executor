@@ -283,6 +283,7 @@ Line:
       Comment
       Definition
       BuildStep
+      BuildStepExtra
       Empty
 Comment:
       '#' String
@@ -290,6 +291,8 @@ Definition:
       'DEF' '|' Key '|' Value
 BuildStep:
       Tool '|' Inputs '|' Output
+BuildStepExtra:
+      BuildStep '|' 'extra' ' ' '=' ' ' Value
 Empty:
       <empty>
 Inputs:
@@ -404,7 +407,7 @@ if (std::filesystem::exists(".catalyst.bin") &&
 \end{lstlisting}
 
 The on-disk layout is a fixed header followed by definitions, nodes, and steps,
-with a \emph{string table} appended at the end of the file. Alongside strings and structural fields, each step serializes a 64-bit FNV-1a hash of its exact command-line invocation (\lstinline|command_hash|). This hash persists across runs, allowing the execution engine to quickly determine if compiler flags or arguments changed between builds, invalidating the step even if timestamps match. All string-bearing
+with a \emph{string table} appended at the end of the file. Alongside strings and structural fields, each step serializes a 64-bit rapidhash hash of its exact command-line invocation (\lstinline|command_hash|). This hash persists across runs, allowing the execution engine to quickly determine if compiler flags or arguments changed between builds, invalidating the step even if timestamps match. All string-bearing
 fields are stored as \lstinline|StringRef{offset, len}| pairs that index into
 that table. During serialization a \lstinline|StringBuffer| interns strings ---
 identical views collapse to a single entry via a custom
@@ -593,7 +596,7 @@ manifest.
 
 \subsection{Incremental rebuild decision}
 
-\lstinline|needs_rebuild| is the freshness check. To verify if a step must run, the executor first generates the expected command-line arguments for the invocation and computes their 64-bit FNV-1a hash. This value is compared against the step's cached \lstinline|command_hash|:
+\lstinline|needs_rebuild| is the freshness check. To verify if a step must run, the executor first generates the expected command-line arguments for the invocation and computes their 64-bit rapidhash hash. This value is compared against the step's cached \lstinline|command_hash|:
 \begin{lstlisting}[language=C++]
 if (step.command_hash != current_hash) {
     return true;
