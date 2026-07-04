@@ -528,9 +528,27 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
 
     const std::vector<std::string_view> &inputs = step.parsed_inputs;
 
+    auto add_extra_flags = [&args](std::string_view extra) {
+        size_t start = 0;
+        while (start < extra.size()) {
+            size_t word_start = extra.find_first_not_of(" \t", start);
+            if (word_start == std::string_view::npos) {
+                break;
+            }
+            size_t word_end = extra.find_first_of(" \t", word_start);
+            if (word_end == std::string_view::npos) {
+                args.push_back(std::string(extra.substr(word_start)));
+                break;
+            }
+            args.push_back(std::string(extra.substr(word_start, word_end - word_start)));
+            start = word_end;
+        }
+    };
+
     if (step.tool == "cc") {
         add_parts(flags.cc);
         add_parts(flags.cflags);
+        add_extra_flags(step.extra_flags);
         args.insert(args.end(),
                     {"-MMD", "-MT", std::string(step.output), "-MF", std::string(step.output) + ".d", "-c"});
         for (const std::string_view &in : inputs)
@@ -540,6 +558,7 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
     } else if (step.tool == "cxx") {
         add_parts(flags.cxx);
         add_parts(flags.cxxflags);
+        add_extra_flags(step.extra_flags);
         args.insert(args.end(),
                     {"-MMD", "-MT", std::string(step.output), "-MF", std::string(step.output) + ".d", "-c"});
         for (const std::string_view &in : inputs)
@@ -577,6 +596,7 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
         args.emplace_back(step.output);
         add_parts(flags.ldflags);
         add_parts(flags.ldlibs);
+        add_extra_flags(step.extra_flags);
     } else if (step.tool == "ar") {
         add_parts(flags.archiver);
         if (!flags.archiver.empty()) {
@@ -594,6 +614,7 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
         }
         for (const std::string_view &in : inputs)
             args.emplace_back(in);
+        add_extra_flags(step.extra_flags);
     } else if (step.tool == "sld") {
         add_parts(flags.linker);
         args.emplace_back("-shared");
@@ -601,6 +622,7 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
             args.emplace_back(in);
         args.emplace_back("-o");
         args.emplace_back(step.output);
+        add_extra_flags(step.extra_flags);
     }
     return args;
 }
