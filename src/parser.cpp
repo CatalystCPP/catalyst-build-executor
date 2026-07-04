@@ -42,12 +42,52 @@ Result<void> parseStep(const std::string_view line, COBBuilder &builder) {
     if (second_pipe == std::string_view::npos) {
         return std::unexpected(std::format("Malformed step line (missing second pipe): {}", line));
     }
-    Result<void> res = builder.add_step({.tool = line.substr(0, first_pipe),
-                                         .inputs = line.substr(first_pipe + 1, second_pipe - (first_pipe + 1)),
-                                         .output = line.substr(second_pipe + 1),
+
+    std::string_view tool = line.substr(0, first_pipe);
+    std::string_view inputs = line.substr(first_pipe + 1, second_pipe - (first_pipe + 1));
+    std::string_view output;
+    std::string_view extra_flags;
+
+    size_t third_pipe = line.find('|', second_pipe + 1);
+    if (third_pipe == std::string_view::npos) {
+        output = line.substr(second_pipe + 1);
+    } else {
+        output = line.substr(second_pipe + 1, third_pipe - (second_pipe + 1));
+        std::string_view extra_part = line.substr(third_pipe + 1);
+        if (!extra_part.starts_with("extra")) {
+            return std::unexpected(std::format("Malformed step extra part (must start with 'extra'): {}", line));
+        }
+        std::string_view after_extra = extra_part.substr(5);
+        if (after_extra.empty() || (after_extra[0] != ' ' && after_extra[0] != '\t')) {
+            return std::unexpected(std::format("Malformed step extra part (missing spacing before '='): {}", line));
+        }
+        size_t eq_pos = after_extra.find('=');
+        if (eq_pos == std::string_view::npos) {
+            return std::unexpected(std::format("Malformed step extra part (missing '='): {}", line));
+        }
+        std::string_view before_eq = after_extra.substr(0, eq_pos);
+        for (char c : before_eq) {
+            if (c != ' ' && c != '\t') {
+                return std::unexpected(std::format("Malformed step extra part (invalid character before '='): {}", line));
+            }
+        }
+        std::string_view after_eq = after_extra.substr(eq_pos + 1);
+        if (after_eq.empty() || (after_eq[0] != ' ' && after_eq[0] != '\t')) {
+            return std::unexpected(std::format("Malformed step extra part (missing spacing after '='): {}", line));
+        }
+        size_t val_start = after_eq.find_first_not_of(" \t");
+        if (val_start != std::string_view::npos) {
+            extra_flags = after_eq.substr(val_start);
+        }
+    }
+
+    Result<void> res = builder.add_step({.tool = tool,
+                                         .inputs = inputs,
+                                         .output = output,
                                          .opaque_inputs = {},
                                          .depfile_inputs = {},
-                                         .parsed_inputs = {}});
+                                         .parsed_inputs = {},
+                                         .extra_flags = extra_flags});
     if (!res) {
         return std::unexpected(res.error());
     }
