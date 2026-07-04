@@ -1,4 +1,5 @@
 toolchain:
+  name: "cob benchmark"
   extends: tc_cob_common.yaml
   name: "cob benchmarks"
   compiler:

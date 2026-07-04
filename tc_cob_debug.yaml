@@ -1,4 +1,5 @@
 toolchain:
+  name: "cob debug"
   extends: tc_cob_common.yaml
   name: "cob debug"
   compiler:
