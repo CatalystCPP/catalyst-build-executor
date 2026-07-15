@@ -54,6 +54,15 @@ public:
     }
 
     /**
+     * @brief Override a definition
+     * @param key The name of the definition.
+     * @param value The value of the definition.
+     */
+    void override_definition(std::string_view key, std::string_view value) {
+        definitions_.insert_or_assign(key, value);
+    }
+
+    /**
      * @brief Registers a resource to be managed by the graph's lifetime.
      * @param res A shared pointer to the resource.
      */
