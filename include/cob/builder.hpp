@@ -25,7 +25,7 @@ public:
      * @param bs The build step to add.
      * @return Success or error.
      */
-    Result<void> add_step(BuildStep &&bs) {
+    Result<void> addStep(BuildStep &&bs) {
         auto res = graph_.addStep(std::move(bs));
         if (!res)
             return std::unexpected(res.error());
@@ -40,7 +40,7 @@ public:
      * @brief Returns the built graph by moving it out of the builder.
      * @return The completed `BuildGraph`.
      */
-    BuildGraph &&emit_graph() {
+    BuildGraph &&emitGraph() {
         return std::move(graph_);
     }
 
@@ -49,7 +49,7 @@ public:
      * @param key The name of the definition.
      * @param value The value of the definition.
      */
-    void add_definition(std::string_view key, std::string_view value) {
+    void addDefinition(std::string_view key, std::string_view value) {
         definitions_.emplace(key, value);
     }
 
@@ -58,7 +58,7 @@ public:
      * @param key The name of the definition.
      * @param value The value of the definition.
      */
-    void override_definition(std::string_view key, std::string_view value) {
+    void overrideDefinition(std::string_view key, std::string_view value) {
         definitions_.insert_or_assign(key, value);
     }
 
@@ -66,7 +66,7 @@ public:
      * @brief Registers a resource to be managed by the graph's lifetime.
      * @param res A shared pointer to the resource.
      */
-    void add_resource(std::shared_ptr<void> res) {
+    void addResource(std::shared_ptr<void> res) {
         graph_.addResource(std::move(res));
     }
 
@@ -74,7 +74,7 @@ public:
         return definitions_;
     }
 
-    void load_graph_data(BuildGraph::SerializedData &&data) {
+    void loadGraphData(BuildGraph::SerializedData &&data) {
         graph_.loadSerializedData(std::move(data));
     }
 

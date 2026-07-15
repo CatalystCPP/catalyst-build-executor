@@ -97,7 +97,7 @@ Result<void> parseBin(COBBuilder &builder) {
     // 1. Definitions
     for (uint64_t i = 0; i < header->num_definitions; ++i) {
         const auto *def = reinterpret_cast<const BinDefinition *>(ptr);
-        builder.add_definition(get_sv(def->key), get_sv(def->val));
+        builder.addDefinition(get_sv(def->key), get_sv(def->val));
         ptr += sizeof(BinDefinition);
     }
 
@@ -188,10 +188,10 @@ Result<void> parseBin(COBBuilder &builder) {
                          .command_hash = command_hash});
     }
 
-    builder.load_graph_data(
+    builder.loadGraphData(
         BuildGraph::SerializedData{.nodes = std::move(nodes), .steps = std::move(steps), .index = std::move(index)});
 
-    builder.add_resource(file);
+    builder.addResource(file);
     return {};
 }
 

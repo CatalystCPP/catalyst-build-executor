@@ -179,7 +179,7 @@ Executor::Executor(COBBuilder &&builder, ExecutorConfig config)
 }
 
 Result<void> Executor::clean() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     std::println("Cleaning build artifacts...");
 
     std::error_code ec;
@@ -285,7 +285,7 @@ bool inline Executor::needsRebuild(const BuildStep &step,
 }
 
 Result<void> Executor::emitGraph() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     StatCache stat_cache;
 
     const auto cc_vec = builder.getDefinitionOf<std::vector<std::string>>("cc");
@@ -334,7 +334,7 @@ Result<void> Executor::emitGraph() {
 }
 
 Result<void> Executor::emitCompDB() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     std::ofstream f("compile_commands.json");
     std::string cwd = std::filesystem::current_path().string();
 
@@ -406,7 +406,7 @@ Result<void> Executor::emitCompDB() {
 }
 
 Result<void> Executor::emitCommands() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     std::vector<size_t> order;
     auto res = build_graph.topoSort();
     if (!res)
@@ -966,7 +966,7 @@ void Executor::workerLoop(ExecuteContext &ctx, StatCache &stat_cache, bool is_tt
 Result<void> Executor::execute() {
     pool.clear(); // Ensure clean state
 
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
 
     // If graph is empty
     if (build_graph.nodes().empty())
