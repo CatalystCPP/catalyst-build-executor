@@ -537,10 +537,10 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
             }
             size_t word_end = extra.find_first_of(" \t", word_start);
             if (word_end == std::string_view::npos) {
-                args.push_back(std::string(extra.substr(word_start)));
+                args.emplace_back(extra.substr(word_start));
                 break;
             }
-            args.push_back(std::string(extra.substr(word_start, word_end - word_start)));
+            args.emplace_back(extra.substr(word_start, word_end - word_start));
             start = word_end;
         }
     };
