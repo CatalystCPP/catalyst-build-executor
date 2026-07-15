@@ -1188,7 +1188,7 @@ Result<void> Executor::execute() {
     }
 
     if (!config.dry_run) {
-        builder.graph_ = std::move(ctx.build_graph);
+        builder.m_graph = std::move(ctx.build_graph);
         if (auto bin_res = emitBin(builder); !bin_res) {
             std::println(stderr, "Warning: Failed to write .catalyst.bin: {}", bin_res.error());
         }

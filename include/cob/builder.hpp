@@ -26,14 +26,14 @@ public:
      * @return Success or error.
      */
     Result<void> addStep(BuildStep &&bs) {
-        auto res = graph_.addStep(std::move(bs));
+        auto res = m_graph.addStep(std::move(bs));
         if (!res)
             return std::unexpected(res.error());
         return {};
     }
 
     const BuildGraph &graph() const {
-        return graph_;
+        return m_graph;
     }
 
     /**
@@ -41,7 +41,7 @@ public:
      * @return The completed `BuildGraph`.
      */
     BuildGraph &&emitGraph() {
-        return std::move(graph_);
+        return std::move(m_graph);
     }
 
     /**
@@ -50,7 +50,7 @@ public:
      * @param value The value of the definition.
      */
     void addDefinition(std::string_view key, std::string_view value) {
-        definitions_.emplace(key, value);
+        m_definitions.emplace(key, value);
     }
 
     /**
@@ -59,7 +59,7 @@ public:
      * @param value The value of the definition.
      */
     void overrideDefinition(std::string_view key, std::string_view value) {
-        definitions_.insert_or_assign(key, value);
+        m_definitions.insert_or_assign(key, value);
     }
 
     /**
@@ -67,15 +67,15 @@ public:
      * @param res A shared pointer to the resource.
      */
     void addResource(std::shared_ptr<void> res) {
-        graph_.addResource(std::move(res));
+        m_graph.addResource(std::move(res));
     }
 
     const Definitions &definitions() const {
-        return definitions_;
+        return m_definitions;
     }
 
     void loadGraphData(BuildGraph::SerializedData &&data) {
-        graph_.loadSerializedData(std::move(data));
+        m_graph.loadSerializedData(std::move(data));
     }
 
     friend Result<void> parse(COBBuilder &, const std::filesystem::path &);
@@ -84,7 +84,7 @@ public:
 private:
     template <typename Return_T> Return_T getDefinitionOf(std::string_view key) const {
         if constexpr (std::is_same_v<Return_T, std::string>) {
-            if (const Definitions::const_iterator it = definitions_.find(key); it != definitions_.end())
+            if (const Definitions::const_iterator it = m_definitions.find(key); it != m_definitions.end())
                 return std::string(it->second);
             return "";
         } else if constexpr (std::is_same_v<Return_T, std::vector<std::string>>) {
@@ -117,8 +117,8 @@ private:
         return archiver_vec;
     }
 
-    BuildGraph graph_;
-    Definitions definitions_;
+    BuildGraph m_graph;
+    Definitions m_definitions;
 };
 
 } // namespace catalyst
