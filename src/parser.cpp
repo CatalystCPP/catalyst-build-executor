@@ -57,7 +57,7 @@ Result<void> parseStep(const std::string_view line, COBBuilder &builder) {
         if (!extra_part.starts_with("extra")) {
             return std::unexpected(std::format("Malformed step extra part (must start with 'extra'): {}", line));
         }
-        std::string_view after_extra = extra_part.substr(5);
+        std::string_view after_extra = extra_part.substr(sizeof("extra") - 1);
         if (after_extra.empty() || (after_extra[0] != ' ' && after_extra[0] != '\t')) {
             return std::unexpected(std::format("Malformed step extra part (missing spacing before '='): {}", line));
         }
