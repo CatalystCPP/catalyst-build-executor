@@ -1,10 +1,11 @@
 #include "cob/flat_map.hpp"
+
 #include "cob/binary.hpp"
+
 #include <bit>
 #include <utility>
 
 namespace catalyst {
-
 
 template <typename Key_T, typename Value_T, typename Hash_T>
 FlatHashMap<Key_T, Value_T, Hash_T>::FlatHashMap(size_t capacity) {
@@ -12,7 +13,7 @@ FlatHashMap<Key_T, Value_T, Hash_T>::FlatHashMap(size_t capacity) {
 }
 
 template <typename Key_T, typename Value_T, typename Hash_T>
-Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::insert(const Key_T& key, const Value_T& value) {
+Value_T *FlatHashMap<Key_T, Value_T, Hash_T>::insert(const Key_T &key, const Value_T &value) {
     if (size_m >= slots.size() * ROBIN_HOOD_LOAD_FACTOR) {
         rehash(slots.size() * 2);
     }
@@ -20,8 +21,9 @@ Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::insert(const Key_T& key, const Val
 }
 
 template <typename Key_T, typename Value_T, typename Hash_T>
-Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::find(const Key_T& key) {
-    if (slots.empty()) return nullptr;
+Value_T *FlatHashMap<Key_T, Value_T, Hash_T>::find(const Key_T &key) {
+    if (slots.empty())
+        return nullptr;
 
     size_t h = Hash_T{}(key);
     size_t mask = slots.size() - 1;
@@ -42,8 +44,9 @@ Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::find(const Key_T& key) {
 }
 
 template <typename Key_T, typename Value_T, typename Hash_T>
-const Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::find(const Key_T& key) const {
-    if (slots.empty()) return nullptr;
+const Value_T *FlatHashMap<Key_T, Value_T, Hash_T>::find(const Key_T &key) const {
+    if (slots.empty())
+        return nullptr;
 
     size_t h = Hash_T{}(key);
     size_t mask = slots.size() - 1;
@@ -65,16 +68,16 @@ const Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::find(const Key_T& key) const
 
 template <typename Key_T, typename Value_T, typename Hash_T>
 void FlatHashMap<Key_T, Value_T, Hash_T>::reserve(size_t capacity) {
-//NOLINTBEGIN(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
+    // NOLINTBEGIN(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
     size_t needed = std::bit_ceil(static_cast<size_t>(capacity / ROBIN_HOOD_LOAD_FACTOR) + 1);
-//NOLINTEND(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
+    // NOLINTEND(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
     if (needed > slots.size()) {
         rehash(needed);
     }
 }
 
 template <typename Key_T, typename Value_T, typename Hash_T>
-Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::insertHelper(Key_T key, Value_T value) {
+Value_T *FlatHashMap<Key_T, Value_T, Hash_T>::insertHelper(Key_T key, Value_T value) {
     size_t h = Hash_T{}(key);
     size_t mask = slots.size() - 1;
     size_t idx = h & mask;
@@ -82,10 +85,10 @@ Value_T* FlatHashMap<Key_T, Value_T, Hash_T>::insertHelper(Key_T key, Value_T va
     Key_T current_key = std::move(key);
     Value_T current_value = std::move(value);
     uint32_t current_dist = 1;
-    Value_T* inserted_ptr = nullptr;
+    Value_T *inserted_ptr = nullptr;
 
     while (true) {
-        Slot& slot = slots[idx];
+        Slot &slot = slots[idx];
 
         // Empty slot found
         if (slot.probe_distance == 0) {
@@ -129,7 +132,7 @@ void FlatHashMap<Key_T, Value_T, Hash_T>::rehash(size_t new_capacity) {
     std::vector<Slot> old_slots = std::move(slots);
     slots = std::vector<Slot>(new_capacity);
     size_m = 0;
-    for (Slot& slot : old_slots) {
+    for (Slot &slot : old_slots) {
         if (slot.probe_distance != 0) {
             insertHelper(std::move(slot.key), std::move(slot.value));
         }

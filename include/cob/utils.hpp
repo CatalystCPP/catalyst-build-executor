@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cob/rapidhash.h"
+
 #include <cstdint>
 #include <string_view>
 

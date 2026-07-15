@@ -4,7 +4,7 @@
 #include <filesystem>
 using catalyst::StatCache;
 
-//NOLINTBEGIN(cppcoreguidelines-pro-bounds-constant-array-index)
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-constant-array-index)
 bool StatCache::Entry::operator<(const Entry &other) const {
     return path < other.path;
 }
@@ -12,8 +12,7 @@ bool StatCache::Entry::operator<(std::string_view other_path) const {
     return path < other_path;
 }
 
-auto StatCache::getOrUpdate(std::string_view p)
-    -> std::pair<std::filesystem::file_time_type, std::error_code> {
+auto StatCache::getOrUpdate(std::string_view p) -> std::pair<std::filesystem::file_time_type, std::error_code> {
     size_t idx = getBucketIndex(p);
     Bucket &b = buckets[idx];
 
@@ -35,7 +34,7 @@ auto StatCache::getOrUpdate(std::string_view p)
 
     std::error_code ec;
     std::filesystem::file_time_type time = std::filesystem::last_write_time(std::filesystem::path(p), ec);
-    b.entries.insert(it, {.path=std::string(p), .time=time, .ec=ec});
+    b.entries.insert(it, {.path = std::string(p), .time = time, .ec = ec});
     return {time, ec};
 }
 
@@ -60,11 +59,11 @@ void StatCache::invalidate(std::string_view p) {
 size_t StatCache::getCacheSize() const {
     size_t total = 0;
     for (size_t i = 0; i < NUM_BUCKETS; ++i) {
-        //NOLINTBEGIN(cppcoreguidelines-pro-type-const-cast)
-        std::shared_lock<std::shared_mutex> lock(const_cast<std::shared_mutex&>(buckets[i].mtx));
-        //NOLINTEND(cppcoreguidelines-pro-type-const-cast)
+        // NOLINTBEGIN(cppcoreguidelines-pro-type-const-cast)
+        std::shared_lock<std::shared_mutex> lock(const_cast<std::shared_mutex &>(buckets[i].mtx));
+        // NOLINTEND(cppcoreguidelines-pro-type-const-cast)
         total += buckets[i].entries.size();
     }
     return total;
 }
-//NOLINTEND(cppcoreguidelines-pro-bounds-constant-array-index)
+// NOLINTEND(cppcoreguidelines-pro-bounds-constant-array-index)

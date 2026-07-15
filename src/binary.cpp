@@ -3,6 +3,7 @@
 #include "cob/build_step.hpp"
 #include "cob/builder.hpp"
 #include "cob/file_handle.hpp"
+#include "cob/flat_map.hpp"
 #include "cob/graph.hpp"
 #include "cob/optional_vector.hpp"
 
@@ -13,7 +14,6 @@
 #include <fstream>
 #include <memory>
 #include <string_view>
-#include "cob/flat_map.hpp"
 #include <vector>
 
 // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -188,11 +188,8 @@ Result<void> parseBin(COBBuilder &builder) {
                          .command_hash = command_hash});
     }
 
-    builder.load_graph_data(BuildGraph::SerializedData{
-        .nodes = std::move(nodes),
-        .steps = std::move(steps),
-        .index = std::move(index)
-    });
+    builder.load_graph_data(
+        BuildGraph::SerializedData{.nodes = std::move(nodes), .steps = std::move(steps), .index = std::move(index)});
 
     builder.add_resource(file);
     return {};

@@ -2,9 +2,8 @@
 
 #include "cob/optional_vector.hpp"
 
-#include <optional>
-#include <string_view>
 #include <flat_map>
+#include <string_view>
 #include <vector>
 
 namespace catalyst {

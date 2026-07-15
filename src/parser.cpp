@@ -5,9 +5,9 @@
 #include "cob/file_handle.hpp"
 #include "cob/utility.hpp"
 
-#include <print>
 #include <iostream>
 #include <memory>
+#include <print>
 #include <string_view>
 
 namespace catalyst {
@@ -68,7 +68,8 @@ Result<void> parseStep(const std::string_view line, COBBuilder &builder) {
         std::string_view before_eq = after_extra.substr(0, eq_pos);
         for (char c : before_eq) {
             if (c != ' ' && c != '\t') {
-                return std::unexpected(std::format("Malformed step extra part (invalid character before '='): {}", line));
+                return std::unexpected(
+                    std::format("Malformed step extra part (invalid character before '='): {}", line));
             }
         }
         std::string_view after_eq = after_extra.substr(eq_pos + 1);

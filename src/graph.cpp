@@ -218,7 +218,7 @@ Result<std::vector<size_t>> BuildGraph::topoSort() const {
             continue;
         }
 
-        stack.push_back({.node=i, .next_edge_idx=0});
+        stack.push_back({.node = i, .next_edge_idx = 0});
         status[i] = STATUS::WORKING;
 
         while (!stack.empty()) {
@@ -232,7 +232,7 @@ Result<std::vector<size_t>> BuildGraph::topoSort() const {
 
                 if (status[v] == STATUS::UNSTARTED) {
                     status[v] = STATUS::WORKING;
-                    stack.push_back({.node=v, .next_edge_idx=0});
+                    stack.push_back({.node = v, .next_edge_idx = 0});
                 } else if (status[v] == STATUS::WORKING) {
                     return std::unexpected(std::format("Cycle detected in the build graph at: {}", nodes_m[v].path));
                 }
