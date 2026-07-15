@@ -32,7 +32,7 @@ public:
         return {};
     }
 
-    const BuildGraph &graph() const {
+    [[nodiscard]] const BuildGraph &graph() const {
         return m_graph;
     }
 
@@ -70,7 +70,7 @@ public:
         m_graph.addResource(std::move(res));
     }
 
-    const Definitions &definitions() const {
+    [[nodiscard]] const Definitions &definitions() const {
         return m_definitions;
     }
 
@@ -82,7 +82,7 @@ public:
     friend class Executor;
 
 private:
-    template <typename Return_T> Return_T getDefinitionOf(std::string_view key) const {
+    template <typename Return_T> [[nodiscard]] Return_T getDefinitionOf(std::string_view key) const {
         if constexpr (std::is_same_v<Return_T, std::string>) {
             if (const Definitions::const_iterator it = m_definitions.find(key); it != m_definitions.end())
                 return std::string(it->second);
@@ -95,7 +95,7 @@ private:
         }
     }
 
-    std::vector<std::string> getLinkerVec(const std::vector<std::string> &cxx_vec) const {
+    [[nodiscard]] std::vector<std::string> getLinkerVec(const std::vector<std::string> &cxx_vec) const {
         auto linker_vec = getDefinitionOf<std::vector<std::string>>("linker");
         if (linker_vec.empty() || (linker_vec.size() == 1 && linker_vec[0].empty())) {
             linker_vec = cxx_vec;
@@ -103,7 +103,7 @@ private:
         return linker_vec;
     }
 
-    std::vector<std::string> getArchiverVec() const {
+    [[nodiscard]] std::vector<std::string> getArchiverVec() const {
         auto archiver_vec = getDefinitionOf<std::vector<std::string>>("archiver");
         if (archiver_vec.empty() || (archiver_vec.size() == 1 && archiver_vec[0].empty())) {
 #if defined(__APPLE__)
