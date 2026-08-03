@@ -622,6 +622,8 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
             args.emplace_back(in);
         args.emplace_back("-o");
         args.emplace_back(step.output);
+        add_parts(flags.ldflags);
+        add_parts(flags.ldlibs);
         add_extra_flags(step.extra_flags);
     }
     return args;
