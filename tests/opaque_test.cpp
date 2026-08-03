@@ -3,12 +3,12 @@
 #include "cob/parser.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <print>
 #include <thread>
-#include <chrono>
 
 using namespace catalyst;
 
@@ -33,15 +33,15 @@ bool opaque_deps_test() {
     // But the executor constructs the command based on the tool name.
 
     COBBuilder builder;
-    builder.add_definition("cc", ""); // Mock cc with cp for testing
-    builder.add_definition("cflags", "");
+    builder.addDefinition("cc", ""); // Mock cc with cp for testing
+    builder.addDefinition("cflags", "");
 
     BuildStep step;
     step.tool = "cc";
     step.inputs = "input.c,!opaque.txt";
     step.output = "output.o";
 
-    auto res = builder.add_step(std::move(step));
+    auto res = builder.addStep(std::move(step));
     assert(res);
 
     Executor executor(std::move(builder), ExecutorConfig{});
@@ -65,13 +65,13 @@ bool opaque_deps_test() {
 
     // Second run - should rebuild
     COBBuilder builder2;
-    builder2.add_definition("cc", "cp");
-    builder2.add_definition("cflags", "");
+    builder2.addDefinition("cc", "cp");
+    builder2.addDefinition("cflags", "");
     BuildStep step2;
     step2.tool = "cc";
     step2.inputs = "input.c,!opaque.txt";
     step2.output = "output.o";
-    builder2.add_step(std::move(step2));
+    builder2.addStep(std::move(step2));
 
     Executor executor2(std::move(builder2), ExecutorConfig{});
     std::println("Second run (should rebuild)...");
@@ -86,7 +86,8 @@ bool opaque_deps_test() {
     std::filesystem::remove("input.c");
     std::filesystem::remove("opaque.txt");
     std::filesystem::remove("output.o");
-    if (std::filesystem::exists("output.o.d")) std::filesystem::remove("output.o.d");
+    if (std::filesystem::exists("output.o.d"))
+        std::filesystem::remove("output.o.d");
 
     std::println("Opaque Deps Test passed!");
     return true;
