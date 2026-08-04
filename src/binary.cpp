@@ -8,13 +8,19 @@
 #include "cob/optional_vector.hpp"
 
 #include <array>
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
-#include <fcntl.h>
 #include <fstream>
 #include <memory>
 #include <string_view>
 #include <vector>
+
+#ifdef __linux__
+#include <fcntl.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#endif
 
 // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
 namespace catalyst {
@@ -65,6 +71,109 @@ struct BinDefinition {
     StringRef key;
     StringRef val;
 };
+
+#ifdef __linux__
+class FileDescriptor {
+public:
+    explicit FileDescriptor(int descriptor) : descriptor(descriptor) {
+    }
+
+    ~FileDescriptor() {
+        if (descriptor != -1) {
+            ::close(descriptor);
+        }
+    }
+
+    FileDescriptor(const FileDescriptor &) = delete;
+    FileDescriptor &operator=(const FileDescriptor &) = delete;
+    FileDescriptor(FileDescriptor &&) = delete;
+    FileDescriptor &operator=(FileDescriptor &&) = delete;
+
+    [[nodiscard]] int get() const {
+        return descriptor;
+    }
+
+    bool close() {
+        int descriptor_to_close = descriptor;
+        descriptor = -1;
+        return ::close(descriptor_to_close) == 0;
+    }
+
+private:
+    int descriptor;
+};
+#endif
+
+Result<void> writeBinData(const BinHeader &header,
+                          const std::vector<BinDefinition> &bin_defs,
+                          const std::vector<char> &nodes_buf,
+                          const std::vector<char> &steps_buf,
+                          std::string_view strings) {
+#ifdef __linux__
+    constexpr mode_t FILE_MODE = 0666;
+    FileDescriptor file(::open(".catalyst.bin.tmp", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, FILE_MODE));
+    if (file.get() == -1) {
+        return std::unexpected("Failed to open .catalyst.bin.tmp for writing");
+    }
+
+    constexpr size_t BUFFER_COUNT = 5;
+    // POSIX specifies mutable iovec pointers even though writev does not modify the buffers.
+    // NOLINTBEGIN(cppcoreguidelines-pro-type-const-cast)
+    std::array<iovec, BUFFER_COUNT> buffers{{
+        {.iov_base = const_cast<BinHeader *>(&header), .iov_len = sizeof(BinHeader)},
+        {.iov_base = const_cast<BinDefinition *>(bin_defs.data()), .iov_len = bin_defs.size() * sizeof(BinDefinition)},
+        {.iov_base = const_cast<char *>(nodes_buf.data()), .iov_len = nodes_buf.size()},
+        {.iov_base = const_cast<char *>(steps_buf.data()), .iov_len = steps_buf.size()},
+        {.iov_base = const_cast<char *>(strings.data()), .iov_len = strings.size()},
+    }};
+    // NOLINTEND(cppcoreguidelines-pro-type-const-cast)
+
+    iovec *next_buffer = buffers.data();
+    const iovec *buffers_end = buffers.data() + buffers.size();
+    while (next_buffer != buffers_end) {
+        int remaining_buffers = static_cast<int>(buffers_end - next_buffer);
+        auto written = ::writev(file.get(), next_buffer, remaining_buffers);
+        if (written == -1 && errno == EINTR) {
+            continue;
+        }
+        if (written <= 0) {
+            return std::unexpected("Failed to write .catalyst.bin.tmp");
+        }
+
+        auto consumed = static_cast<size_t>(written);
+        while (next_buffer != buffers_end && consumed >= next_buffer->iov_len) {
+            consumed -= next_buffer->iov_len;
+            ++next_buffer;
+        }
+        if (next_buffer != buffers_end && consumed != 0) {
+            auto *data = static_cast<char *>(next_buffer->iov_base);
+            next_buffer->iov_base = data + consumed;
+            next_buffer->iov_len -= consumed;
+        }
+    }
+
+    if (!file.close()) {
+        return std::unexpected("Failed to close .catalyst.bin.tmp after writing");
+    }
+#else
+    std::ofstream out(".catalyst.bin.tmp", std::ios::binary);
+    if (!out) {
+        return std::unexpected("Failed to open .catalyst.bin.tmp for writing");
+    }
+
+    out.write(reinterpret_cast<const char *>(&header), sizeof(BinHeader));
+    out.write(reinterpret_cast<const char *>(bin_defs.data()), bin_defs.size() * sizeof(BinDefinition));
+    out.write(nodes_buf.data(), nodes_buf.size());
+    out.write(steps_buf.data(), steps_buf.size());
+    out.write(strings.data(), strings.size());
+    out.close();
+    if (!out) {
+        return std::unexpected("Failed to write .catalyst.bin.tmp");
+    }
+#endif
+
+    return {};
+}
 
 } // namespace
 
@@ -197,11 +306,6 @@ Result<void> parseBin(COBBuilder &builder) {
 }
 
 Result<void> emitBin(COBBuilder &builder) {
-    std::ofstream out(".catalyst.bin.tmp", std::ios::binary);
-    if (!out) {
-        return std::unexpected("Failed to open .catalyst.bin.tmp for writing");
-    }
-
     StringBuffer sb;
     const Definitions &definitions = builder.definitions();
     const std::vector<BuildGraph::Node> &nodes = builder.graph().nodes();
@@ -287,16 +391,10 @@ Result<void> emitBin(COBBuilder &builder) {
     header.strings_size = sb.data().size();
 
     // NOLINTBEGIN(cppcoreguidelines-narrowing-conversions, bugprone-narrowing-conversions)
-    out.write(reinterpret_cast<const char *>(&header), sizeof(BinHeader));
-    out.write(reinterpret_cast<const char *>(bin_defs.data()), bin_defs.size() * sizeof(BinDefinition));
-    out.write(nodes_buf.data(), nodes_buf.size());
-    out.write(steps_buf.data(), steps_buf.size());
-    out.write(sb.data().data(), sb.data().size());
-    out.close();
-    if (!out) {
+    if (auto write_result = writeBinData(header, bin_defs, nodes_buf, steps_buf, sb.data()); !write_result) {
         std::error_code rm_ec;
         std::filesystem::remove(".catalyst.bin.tmp", rm_ec);
-        return std::unexpected("Failed to write .catalyst.bin.tmp");
+        return write_result;
     }
 
     std::error_code ec;
