@@ -21,6 +21,15 @@ namespace catalyst {
 
 namespace {
 
+constexpr std::string_view MAGIC =
+#ifdef __linux__
+    "CATBL004";
+#elif defined(__APPLE__)
+    "CATBM004";
+#elif defined(_WIN32) || defined(_WIN64)
+    "CATBW004";
+#endif
+
 class StringBuffer {
 public:
     StringRef add(std::string_view sv) {
@@ -44,10 +53,8 @@ private:
     FlatHashMap<std::string_view, StringRef, StringViewHash> buffer_cache;
 };
 
-constexpr size_t BIN_HEADER_MAGIC_BIT_LEN = 8;
-
 struct BinHeader {
-    std::array<char, BIN_HEADER_MAGIC_BIT_LEN> magic;
+    std::array<char, MAGIC.size()> magic;
     uint64_t num_definitions;
     uint64_t num_nodes;
     uint64_t num_steps;
@@ -75,13 +82,7 @@ Result<void> parseBin(COBBuilder &builder) {
     }
 
     const auto *header = reinterpret_cast<const BinHeader *>(content.data());
-#ifdef __linux__
-    if (std::memcmp(header->magic.data(), "CATBL003", BIN_HEADER_MAGIC_BIT_LEN) != 0) {
-#elif defined(__APPLE__)
-    if (std::memcmp(header->magic.data(), "CATBM003", 8) != 0) {
-#elif defined(_WIN32) || defined(_WIN64)
-    if (std::memcmp(header->magic.data(), "CATBW003", 8) != 0) {
-#endif
+    if (std::memcmp(header->magic.data(), MAGIC.data(), MAGIC.size()) != 0) {
         return std::unexpected("Invalid magic or version in .catalyst.bin");
     }
 
@@ -279,13 +280,7 @@ Result<void> emitBin(COBBuilder &builder) {
     }
 
     BinHeader header{};
-#ifdef __linux__
-    std::memcpy(header.magic.data(), "CATBL003", BIN_HEADER_MAGIC_BIT_LEN);
-#elif defined(__APPLE__)
-    std::memcpy(header.magic.data(), "CATBM003", 8);
-#elif defined(_WIN32) || defined(_WIN64)
-    std::memcpy(header.magic.data(), "CATBW003", 8);
-#endif
+    std::memcpy(header.magic.data(), MAGIC.data(), MAGIC.size());
     header.num_definitions = bin_defs.size();
     header.num_nodes = nodes.size();
     header.num_steps = steps.size();
