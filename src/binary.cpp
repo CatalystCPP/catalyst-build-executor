@@ -74,6 +74,15 @@ struct BinDefinition {
     StringRef val;
 };
 
+struct BinStepHeader {
+    StringRef tool;
+    StringRef inputs;
+    StringRef output;
+    StringRef extra_flags;
+    uint64_t command_hash;
+    uint64_t depfile_count;
+};
+
 Result<void> writeBinData(const BinHeader &header,
                           const std::vector<BinDefinition> &bin_defs,
                           const std::vector<char> &nodes_buf,
@@ -281,84 +290,84 @@ Result<void> emitBin(COBBuilder &builder) {
     const std::vector<BuildGraph::Node> &nodes = builder.graph().nodes();
     const std::vector<BuildStep> &steps = builder.graph().steps();
 
-    std::vector<BinDefinition> bin_defs;
-    for (const auto &[k, v] : definitions) {
-        bin_defs.push_back({.key = sb.add(k), .val = sb.add(v)});
-    }
-
-    // Nodes and steps are variable length, we'll write them in two passes or buffer.
-    // Let's buffer to calculate sizes.
-    std::vector<char> nodes_buf;
-    for (const BuildGraph::Node &node : nodes) {
-        StringRef path_ref = sb.add(node.path);
-        nodes_buf.insert(nodes_buf.end(),
-                         reinterpret_cast<const char *>(&path_ref),
-                         reinterpret_cast<const char *>(&path_ref) + sizeof(StringRef));
-
-        uint64_t step_id = node.step_id.value_or(UINT64_MAX);
-        nodes_buf.insert(nodes_buf.end(),
-                         reinterpret_cast<const char *>(&step_id),
-                         reinterpret_cast<const char *>(&step_id) + sizeof(uint64_t));
-
-        uint64_t num_out_edges = node.out_edges.size();
-        nodes_buf.insert(nodes_buf.end(),
-                         reinterpret_cast<const char *>(&num_out_edges),
-                         reinterpret_cast<const char *>(&num_out_edges) + sizeof(uint64_t));
-
-        for (size_t edge : node.out_edges) {
-            uint64_t edge_u64 = edge;
-            nodes_buf.insert(nodes_buf.end(),
-                             reinterpret_cast<const char *>(&edge_u64),
-                             reinterpret_cast<const char *>(&edge_u64) + sizeof(uint64_t));
+    auto emit_definitions = [&sb, &definitions]() -> std::vector<BinDefinition> {
+        std::vector<BinDefinition> bin_defs;
+        bin_defs.reserve(definitions.size());
+        for (const auto &[k, v] : definitions) {
+            bin_defs.push_back({.key = sb.add(k), .val = sb.add(v)});
         }
-    }
+        return bin_defs;
+    };
 
-    std::vector<char> steps_buf;
-    for (const BuildStep &step : steps) {
-        StringRef tool_ref = sb.add(step.tool);
-        StringRef inputs_ref = sb.add(step.inputs);
-        StringRef output_ref = sb.add(step.output);
-        StringRef extra_flags_ref = sb.add(step.extra_flags);
+    auto emit_nodes = [&sb, &nodes]() -> std::vector<char> {
+        std::vector<char> nodes_buf;
+        for (const BuildGraph::Node &node : nodes) {
+            StringRef path_ref = sb.add(node.path);
+            nodes_buf.insert(nodes_buf.end(),
+                             reinterpret_cast<const char *>(&path_ref),
+                             reinterpret_cast<const char *>(&path_ref) + sizeof(StringRef));
 
-        steps_buf.insert(steps_buf.end(),
-                         reinterpret_cast<const char *>(&tool_ref),
-                         reinterpret_cast<const char *>(&tool_ref) + sizeof(StringRef));
-        steps_buf.insert(steps_buf.end(),
-                         reinterpret_cast<const char *>(&inputs_ref),
-                         reinterpret_cast<const char *>(&inputs_ref) + sizeof(StringRef));
-        steps_buf.insert(steps_buf.end(),
-                         reinterpret_cast<const char *>(&output_ref),
-                         reinterpret_cast<const char *>(&output_ref) + sizeof(StringRef));
-        steps_buf.insert(steps_buf.end(),
-                         reinterpret_cast<const char *>(&extra_flags_ref),
-                         reinterpret_cast<const char *>(&extra_flags_ref) + sizeof(StringRef));
+            uint64_t step_id = node.step_id.value_or(UINT64_MAX);
+            nodes_buf.insert(nodes_buf.end(),
+                             reinterpret_cast<const char *>(&step_id),
+                             reinterpret_cast<const char *>(&step_id) + sizeof(uint64_t));
 
-        uint64_t command_hash = step.command_hash;
-        steps_buf.insert(steps_buf.end(),
-                         reinterpret_cast<const char *>(&command_hash),
-                         reinterpret_cast<const char *>(&command_hash) + sizeof(uint64_t));
+            uint64_t num_out_edges = node.out_edges.size();
+            nodes_buf.insert(nodes_buf.end(),
+                             reinterpret_cast<const char *>(&num_out_edges),
+                             reinterpret_cast<const char *>(&num_out_edges) + sizeof(uint64_t));
 
-        uint64_t depfile_count = step.depfile_inputs.has_value() ? step.depfile_inputs.size() : UINT64_MAX;
-        steps_buf.insert(steps_buf.end(),
-                         reinterpret_cast<const char *>(&depfile_count),
-                         reinterpret_cast<const char *>(&depfile_count) + sizeof(uint64_t));
-
-        if (step.depfile_inputs.has_value()) {
-            for (const std::string_view &di : step.depfile_inputs) {
-                StringRef ref = sb.add(di);
-                steps_buf.insert(steps_buf.end(),
-                                 reinterpret_cast<const char *>(&ref),
-                                 reinterpret_cast<const char *>(&ref) + sizeof(StringRef));
+            for (size_t edge : node.out_edges) {
+                uint64_t edge_u64 = edge;
+                nodes_buf.insert(nodes_buf.end(),
+                                 reinterpret_cast<const char *>(&edge_u64),
+                                 reinterpret_cast<const char *>(&edge_u64) + sizeof(uint64_t));
             }
         }
-    }
+        return nodes_buf;
+    };
 
-    BinHeader header{};
-    std::memcpy(header.magic.data(), MAGIC.data(), MAGIC.size());
-    header.num_definitions = bin_defs.size();
-    header.num_nodes = nodes.size();
-    header.num_steps = steps.size();
-    header.strings_size = sb.data().size();
+    auto emit_steps = [&sb, &steps]() -> std::vector<char> {
+        std::vector<char> steps_buf;
+        for (const BuildStep &step : steps) {
+            BinStepHeader step_header{
+                .tool = sb.add(step.tool),
+                .inputs = sb.add(step.inputs),
+                .output = sb.add(step.output),
+                .extra_flags = sb.add(step.extra_flags),
+                .command_hash = step.command_hash,
+                .depfile_count = step.depfile_inputs.has_value() ? step.depfile_inputs.size() : UINT64_MAX,
+            };
+            steps_buf.insert(steps_buf.end(),
+                             reinterpret_cast<const char *>(&step_header),
+                             reinterpret_cast<const char *>(&step_header) + sizeof(BinStepHeader));
+
+            if (step.depfile_inputs.has_value()) {
+                for (const std::string_view &di : step.depfile_inputs) {
+                    StringRef ref = sb.add(di);
+                    steps_buf.insert(steps_buf.end(),
+                                     reinterpret_cast<const char *>(&ref),
+                                     reinterpret_cast<const char *>(&ref) + sizeof(StringRef));
+                }
+            }
+        }
+        return steps_buf;
+    };
+
+    auto emit_header = [&sb, &nodes, &steps](size_t num_definitions) -> BinHeader {
+        BinHeader header{};
+        std::memcpy(header.magic.data(), MAGIC.data(), MAGIC.size());
+        header.num_definitions = num_definitions;
+        header.num_nodes = nodes.size();
+        header.num_steps = steps.size();
+        header.strings_size = sb.data().size();
+        return header;
+    };
+
+    std::vector<BinDefinition> bin_defs = emit_definitions();
+    std::vector<char> nodes_buf = emit_nodes();
+    std::vector<char> steps_buf = emit_steps();
+    BinHeader header = emit_header(bin_defs.size());
 
     // NOLINTBEGIN(cppcoreguidelines-narrowing-conversions, bugprone-narrowing-conversions)
     if (auto write_result = writeBinData(header, bin_defs, nodes_buf, steps_buf, sb.data()); !write_result) {
