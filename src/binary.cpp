@@ -34,14 +34,16 @@
  *      EdgeCount uint64_t
  *      Edges uint64_t[EdgeCount] indicing the output edges of this node using an adjacency list.
  *
- * BinStepHeader:  (total 56 bytes)
- *      Tool StringRef (cc, cxx, ld, ar, sld, potentially more in the future)
+ * BinStepHeader:  (total 72 bytes, including trailing alignment padding)
  *      Inputs StringRef (comma-separated list of input paths, with opaque inputs prefixed with '!')
  *      Output StringRef (path to the output file)
  *      ExtraFlags StringRef (additional flags to pass to the tool, e.g. for cxx: -std=c++20 -Wall -Werror)
  *      CommandHash uint64_t (hash of the command line, used to determine if the command has changed since the last build)
  *      DepfileCount (number of depfile inputs, UINT64_MAX if no depfile is associated with this step)
- *      DepfileInputs StringRef[DepfileCount] (paths to the depfile inputs, if any)
+ *      Tool ToolKind uint8_t (cc, cxx, ld, ar, or sld)
+ *
+ * DepfileInputs:
+ *      StringRef[DepfileCount] (paths to the depfile inputs, if any)
  */
 // clang-format on
 
@@ -61,6 +63,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -122,14 +125,62 @@ struct BinDefinition {
     StringRef val;
 };
 
+enum class ToolKind : std::uint8_t {
+    CC_COMPILE = 0,
+    CXX_COMPILE = 1,
+    LINK = 2,
+    ARCHIVE = 3,
+    SHARED_LINK = 4,
+
+    INVALID = std::numeric_limits<std::uint8_t>::max(),
+};
+
 struct BinStepHeader {
-    StringRef tool;
     StringRef inputs;
     StringRef output;
     StringRef extra_flags;
     uint64_t command_hash;
     uint64_t depfile_count;
+    ToolKind tool;
+    std::array<char, 7> padding; // Padding to align the struct to 8 bytes
 };
+
+constexpr ToolKind toolKindFromString(std::string_view tool) {
+    if (tool == "cc") {
+        return ToolKind::CC_COMPILE;
+    }
+    if (tool == "cxx") {
+        return ToolKind::CXX_COMPILE;
+    }
+    if (tool == "ld") {
+        return ToolKind::LINK;
+    }
+    if (tool == "ar") {
+        return ToolKind::ARCHIVE;
+    }
+    if (tool == "sld") {
+        return ToolKind::SHARED_LINK;
+    }
+    return ToolKind::INVALID;
+}
+
+constexpr std::string_view stringFromToolKind(ToolKind tool) {
+    switch (tool) {
+        case ToolKind::CC_COMPILE:
+            return "cc";
+        case ToolKind::CXX_COMPILE:
+            return "cxx";
+        case ToolKind::LINK:
+            return "ld";
+        case ToolKind::ARCHIVE:
+            return "ar";
+        case ToolKind::SHARED_LINK:
+            return "sld";
+        case ToolKind::INVALID:
+        default:
+            return {};
+    }
+}
 
 uint64_t calculateChecksum(const BinHeader &header, std::string_view payload) {
     BinHeader checksum_header = header;
@@ -272,23 +323,19 @@ Result<void> parseBin(COBBuilder &builder) {
     steps.reserve(header->num_steps);
 
     for (uint64_t i = 0; i < header->num_steps; ++i) {
-        StringRef tool_ref = *reinterpret_cast<const StringRef *>(ptr);
-        ptr += sizeof(StringRef);
-        StringRef inputs_ref = *reinterpret_cast<const StringRef *>(ptr);
-        ptr += sizeof(StringRef);
-        StringRef output_ref = *reinterpret_cast<const StringRef *>(ptr);
-        ptr += sizeof(StringRef);
-        StringRef extra_flags_ref = *reinterpret_cast<const StringRef *>(ptr);
-        ptr += sizeof(StringRef);
-        uint64_t command_hash = *reinterpret_cast<const uint64_t *>(ptr);
-        ptr += sizeof(uint64_t);
-        uint64_t depfile_count = *reinterpret_cast<const uint64_t *>(ptr);
-        ptr += sizeof(uint64_t);
+        const auto *step_header = reinterpret_cast<const BinStepHeader *>(ptr);
+        ptr += sizeof(BinStepHeader);
+
+        std::string_view tool = stringFromToolKind(step_header->tool);
+        if (tool.empty()) {
+            return std::unexpected(std::format("Malformed .catalyst.bin: invalid tool kind {}",
+                                               static_cast<unsigned int>(step_header->tool)));
+        }
 
         catalyst::optional_vector<std::string_view> depfile_inputs;
-        if (depfile_count != UINT64_MAX) {
-            depfile_inputs.reserve(depfile_count);
-            for (uint64_t j = 0; j < depfile_count; ++j) {
+        if (step_header->depfile_count != UINT64_MAX) {
+            depfile_inputs.reserve(step_header->depfile_count);
+            for (uint64_t j = 0; j < step_header->depfile_count; ++j) {
                 StringRef ref = *reinterpret_cast<const StringRef *>(ptr);
                 ptr += sizeof(StringRef);
                 depfile_inputs.push_back(get_sv(ref));
@@ -297,7 +344,7 @@ Result<void> parseBin(COBBuilder &builder) {
 
         std::vector<std::string_view> parsed_inputs;
         catalyst::optional_vector<std::string_view> opaque_inputs;
-        std::string_view remaining = get_sv(inputs_ref);
+        std::string_view remaining = get_sv(step_header->inputs);
         while (!remaining.empty()) {
             size_t comma_pos = remaining.find(',');
             std::string_view in_path;
@@ -317,14 +364,14 @@ Result<void> parseBin(COBBuilder &builder) {
             }
         }
 
-        steps.push_back({.tool = get_sv(tool_ref),
-                         .inputs = get_sv(inputs_ref),
-                         .output = get_sv(output_ref),
+        steps.push_back({.tool = tool,
+                         .inputs = get_sv(step_header->inputs),
+                         .output = get_sv(step_header->output),
                          .opaque_inputs = std::move(opaque_inputs),
                          .depfile_inputs = std::move(depfile_inputs),
                          .parsed_inputs = std::move(parsed_inputs),
-                         .extra_flags = get_sv(extra_flags_ref),
-                         .command_hash = command_hash});
+                         .extra_flags = get_sv(step_header->extra_flags),
+                         .command_hash = step_header->command_hash});
     }
 
     builder.loadGraphData(
@@ -376,16 +423,21 @@ Result<void> emitBin(COBBuilder &builder) {
         }
     };
 
-    auto emit_steps = [&sb, &payload, &steps]() -> void {
+    auto emit_steps = [&sb, &payload, &steps]() -> Result<void> {
         for (const BuildStep &step : steps) {
-            BinStepHeader step_header{
-                .tool = sb.add(step.tool),
-                .inputs = sb.add(step.inputs),
-                .output = sb.add(step.output),
-                .extra_flags = sb.add(step.extra_flags),
-                .command_hash = step.command_hash,
-                .depfile_count = step.depfile_inputs.has_value() ? step.depfile_inputs.size() : UINT64_MAX,
-            };
+            ToolKind tool = toolKindFromString(step.tool);
+            if (tool == ToolKind::INVALID) {
+                return std::unexpected(std::format("Cannot emit .catalyst.bin: unsupported tool '{}'", step.tool));
+            }
+
+            BinStepHeader step_header{};
+            step_header.inputs = sb.add(step.inputs);
+            step_header.output = sb.add(step.output);
+            step_header.extra_flags = sb.add(step.extra_flags);
+            step_header.command_hash = step.command_hash;
+            step_header.depfile_count = step.depfile_inputs.has_value() ? step.depfile_inputs.size() : UINT64_MAX;
+            step_header.tool = tool;
+            std::memset(step_header.padding.data(), 0, step_header.padding.size());
             payload.insert(payload.end(),
                            reinterpret_cast<const char *>(&step_header),
                            reinterpret_cast<const char *>(&step_header) + sizeof(BinStepHeader));
@@ -399,6 +451,7 @@ Result<void> emitBin(COBBuilder &builder) {
                 }
             }
         }
+        return {};
     };
 
     auto emit_header = [&sb, &nodes, &steps](size_t num_definitions) -> BinHeader {
@@ -413,7 +466,9 @@ Result<void> emitBin(COBBuilder &builder) {
 
     emit_definitions();
     emit_nodes();
-    emit_steps();
+    if (auto emit_steps_result = emit_steps(); !emit_steps_result) {
+        return emit_steps_result;
+    }
     BinHeader header = emit_header(definitions.size());
     payload.insert(payload.end(), sb.data().begin(), sb.data().end());
     header.checksum = calculateChecksum(header, {payload.data(), payload.size()});
