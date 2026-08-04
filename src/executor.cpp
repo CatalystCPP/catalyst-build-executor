@@ -182,25 +182,36 @@ Result<void> Executor::clean() {
     catalyst::BuildGraph build_graph = builder.emitGraph();
     std::println("Cleaning build artifacts...");
 
-    std::error_code ec;
-    if (config.clean_cc_only) {
-        for (const BuildStep &step : build_graph.steps()) {
-            // rests on the following assumptions:
-            // 1. we only have ar, ld, and sld
-            // 2. step.tool.size() > 0 which will always happen because of construction
-            //    this is important because step.tool is a std::string_view and out of bounds access is UB
-            // 3. most steps are cc/cxx
-            if (step.tool[0] != 'c') [[unlikely]]
-                continue;
-            std::filesystem::remove(step.output, ec);
-            std::filesystem::remove(std::string(step.output) + ".d", ec);
-        }
-    } else {
-        for (const BuildStep &step : build_graph.steps()) {
-            std::filesystem::remove(step.output, ec);
-            std::filesystem::remove(std::string(step.output) + ".d", ec);
-        }
+#ifdef __linux__
+    std::string path;
+
+    const auto remove_file = [&](std::string_view file) {
+        path.assign(file);
+        ::unlink(path.c_str());
+    };
+    const auto remove_depfile = [&](std::string_view file) {
+        path.assign(file);
+        path.append(".d");
+        ::unlink(path.c_str());
+    };
+#else
+    std::error_code ec; // used to make std::filesystem::remove noexcept
+
+    const auto remove_file = [&](std::string_view file) { std::filesystem::remove(std::filesystem::path(file), ec); };
+    const auto remove_depfile = [&](std::string_view file) { std::filesystem::remove(std::string(file) + ".d", ec); };
+#endif
+
+    for (const BuildStep &step : build_graph.steps()) {
+        const bool is_compile_step = step.tool[0] == 'c';
+
+        if (config.clean_cc_only && !is_compile_step) [[unlikely]]
+            continue;
+
+        remove_file(step.output);
+        if (is_compile_step)
+            remove_depfile(step.output);
     }
+
     return {};
 }
 
