@@ -116,6 +116,42 @@ bool rebuild_command_change_test() {
     return true;
 }
 
+bool binaryChecksumTest() {
+    std::println("Starting Binary Checksum Test...");
+
+    COBBuilder builder;
+    builder.addDefinition("cc", "clang");
+    if (auto emit_result = emitBin(builder); !emit_result) {
+        std::println(std::cerr, "Failed to emit binary cache: {}", emit_result.error());
+        return false;
+    }
+
+    std::fstream binary(".catalyst.bin", std::ios::in | std::ios::out | std::ios::binary);
+    binary.seekg(-1, std::ios::end);
+    char byte = 0;
+    binary.read(&byte, 1);
+    byte ^= 1;
+    binary.seekp(-1, std::ios::end);
+    binary.write(&byte, 1);
+    binary.close();
+    if (!binary) {
+        std::println(std::cerr, "Failed to corrupt binary cache for checksum test");
+        std::filesystem::remove(".catalyst.bin");
+        return false;
+    }
+
+    COBBuilder parsed_builder;
+    auto parse_result = parseBin(parsed_builder);
+    std::filesystem::remove(".catalyst.bin");
+    if (parse_result || !parse_result.error().contains("Checksum mismatch")) {
+        std::println(std::cerr, "Corrupted binary cache was not rejected by its checksum");
+        return false;
+    }
+
+    std::println("Binary Checksum Test passed!");
+    return true;
+}
+
 bool build_step_extra_test() {
     std::println("Starting BuildStepExtra Spacing and Compilation Test...");
 
@@ -279,6 +315,11 @@ bool integration_test() {
         std::filesystem::remove("dummy.o.d");
     if (std::filesystem::exists("catalyst.build"))
         std::filesystem::remove("catalyst.build");
+
+    // Run binary checksum test
+    if (!binaryChecksumTest()) {
+        return false;
+    }
 
     // Run BuildStepExtra spacing and compilation test
     if (!build_step_extra_test()) {

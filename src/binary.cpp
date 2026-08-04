@@ -4,14 +4,14 @@
  *      offset  uint64_t Offset into the string pool at the end of the file.
  *      len     uint64_t Length of the string in bytes.
  *
- * Strucutre of the binary:
+ * Structure of the binary:
  *
  * BinHeader     <-- fixed size
  * Definitions
  * Nodes
  * BuildSteps
  * String Data   <-- Pool of strings that are referenced by the above structures using StringRef (offset + length).
- *                   Strings are not neccesarily null-terminated, so the length is required to read them.
+ *                   Strings are not necessarily null-terminated, so the length is required to read them.
  *                   Strings are deduplicated, so the same string may be referenced multiple times.
  *
  * BinHeader:
@@ -20,8 +20,9 @@
  *      NumNodes        uint64_t
  *      NumSteps        uint64_t
  *      StringsSize     uint64_t Size of the string pool at the end of the file.
+ *      Checksum        uint64_t Seeded hash of the header with this field zeroed and the serialized payload.
  *
- * Contingous block of definitions:
+ * Contiguous block of definitions:
  * Definition:     (total 32 bytes)
  *      StringRef Key
  *      StringRef Value
@@ -113,6 +114,7 @@ struct BinHeader {
     uint64_t num_nodes;
     uint64_t num_steps;
     uint64_t strings_size;
+    uint64_t checksum;
 };
 
 struct BinDefinition {
@@ -129,11 +131,14 @@ struct BinStepHeader {
     uint64_t depfile_count;
 };
 
-Result<void> writeBinData(const BinHeader &header,
-                          const std::vector<BinDefinition> &bin_defs,
-                          const std::vector<char> &nodes_buf,
-                          const std::vector<char> &steps_buf,
-                          std::string_view strings) {
+uint64_t calculateChecksum(const BinHeader &header, std::string_view payload) {
+    BinHeader checksum_header = header;
+    checksum_header.checksum = 0;
+    std::string_view header_bytes{reinterpret_cast<const char *>(&checksum_header), sizeof(BinHeader)};
+    return rapid_hash(payload, rapid_hash(header_bytes));
+}
+
+Result<void> writeBinData(const BinHeader &header, std::string_view payload) {
 #ifdef __linux__
     constexpr mode_t FILE_MODE = 0666;
     FileDescriptor file(::open(".catalyst.bin.tmp", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, FILE_MODE));
@@ -141,15 +146,12 @@ Result<void> writeBinData(const BinHeader &header,
         return std::unexpected("Failed to open .catalyst.bin.tmp for writing");
     }
 
-    constexpr size_t BUFFER_COUNT = 5;
+    constexpr size_t BUFFER_COUNT = 2;
     // POSIX specifies mutable iovec pointers even though writev does not modify the buffers.
     // NOLINTBEGIN(cppcoreguidelines-pro-type-const-cast)
     std::array<iovec, BUFFER_COUNT> buffers{{
         {.iov_base = const_cast<BinHeader *>(&header), .iov_len = sizeof(BinHeader)},
-        {.iov_base = const_cast<BinDefinition *>(bin_defs.data()), .iov_len = bin_defs.size() * sizeof(BinDefinition)},
-        {.iov_base = const_cast<char *>(nodes_buf.data()), .iov_len = nodes_buf.size()},
-        {.iov_base = const_cast<char *>(steps_buf.data()), .iov_len = steps_buf.size()},
-        {.iov_base = const_cast<char *>(strings.data()), .iov_len = strings.size()},
+        {.iov_base = const_cast<char *>(payload.data()), .iov_len = payload.size()},
     }};
     // NOLINTEND(cppcoreguidelines-pro-type-const-cast)
 
@@ -187,10 +189,7 @@ Result<void> writeBinData(const BinHeader &header,
     }
 
     out.write(reinterpret_cast<const char *>(&header), sizeof(BinHeader));
-    out.write(reinterpret_cast<const char *>(bin_defs.data()), bin_defs.size() * sizeof(BinDefinition));
-    out.write(nodes_buf.data(), nodes_buf.size());
-    out.write(steps_buf.data(), steps_buf.size());
-    out.write(strings.data(), strings.size());
+    out.write(payload.data(), payload.size());
     out.close();
     if (!out) {
         return std::unexpected("Failed to write .catalyst.bin.tmp");
@@ -218,6 +217,11 @@ Result<void> parseBin(COBBuilder &builder) {
     const auto *header = reinterpret_cast<const BinHeader *>(content.data());
     if (std::memcmp(header->magic.data(), MAGIC.data(), MAGIC.size()) != 0) {
         return std::unexpected("Invalid magic or version in .catalyst.bin");
+    }
+
+    std::string_view payload = content.substr(sizeof(BinHeader));
+    if (calculateChecksum(*header, payload) != header->checksum) {
+        return std::unexpected("Checksum mismatch in .catalyst.bin");
     }
 
     if (header->strings_size > content.size() - sizeof(BinHeader)) {
@@ -332,49 +336,47 @@ Result<void> parseBin(COBBuilder &builder) {
 
 Result<void> emitBin(COBBuilder &builder) {
     StringBuffer sb;
+    std::vector<char> payload;
     const Definitions &definitions = builder.definitions();
     const std::vector<BuildGraph::Node> &nodes = builder.graph().nodes();
     const std::vector<BuildStep> &steps = builder.graph().steps();
 
-    auto emit_definitions = [&sb, &definitions]() -> std::vector<BinDefinition> {
-        std::vector<BinDefinition> bin_defs;
-        bin_defs.reserve(definitions.size());
+    auto emit_definitions = [&sb, &payload, &definitions]() -> void {
         for (const auto &[k, v] : definitions) {
-            bin_defs.push_back({.key = sb.add(k), .val = sb.add(v)});
+            BinDefinition definition{.key = sb.add(k), .val = sb.add(v)};
+            payload.insert(payload.end(),
+                           reinterpret_cast<const char *>(&definition),
+                           reinterpret_cast<const char *>(&definition) + sizeof(BinDefinition));
         }
-        return bin_defs;
     };
 
-    auto emit_nodes = [&sb, &nodes]() -> std::vector<char> {
-        std::vector<char> nodes_buf;
+    auto emit_nodes = [&sb, &payload, &nodes]() -> void {
         for (const BuildGraph::Node &node : nodes) {
             StringRef path_ref = sb.add(node.path);
-            nodes_buf.insert(nodes_buf.end(),
-                             reinterpret_cast<const char *>(&path_ref),
-                             reinterpret_cast<const char *>(&path_ref) + sizeof(StringRef));
+            payload.insert(payload.end(),
+                           reinterpret_cast<const char *>(&path_ref),
+                           reinterpret_cast<const char *>(&path_ref) + sizeof(StringRef));
 
             uint64_t step_id = node.step_id.value_or(UINT64_MAX);
-            nodes_buf.insert(nodes_buf.end(),
-                             reinterpret_cast<const char *>(&step_id),
-                             reinterpret_cast<const char *>(&step_id) + sizeof(uint64_t));
+            payload.insert(payload.end(),
+                           reinterpret_cast<const char *>(&step_id),
+                           reinterpret_cast<const char *>(&step_id) + sizeof(uint64_t));
 
             uint64_t num_out_edges = node.out_edges.size();
-            nodes_buf.insert(nodes_buf.end(),
-                             reinterpret_cast<const char *>(&num_out_edges),
-                             reinterpret_cast<const char *>(&num_out_edges) + sizeof(uint64_t));
+            payload.insert(payload.end(),
+                           reinterpret_cast<const char *>(&num_out_edges),
+                           reinterpret_cast<const char *>(&num_out_edges) + sizeof(uint64_t));
 
             for (size_t edge : node.out_edges) {
                 uint64_t edge_u64 = edge;
-                nodes_buf.insert(nodes_buf.end(),
-                                 reinterpret_cast<const char *>(&edge_u64),
-                                 reinterpret_cast<const char *>(&edge_u64) + sizeof(uint64_t));
+                payload.insert(payload.end(),
+                               reinterpret_cast<const char *>(&edge_u64),
+                               reinterpret_cast<const char *>(&edge_u64) + sizeof(uint64_t));
             }
         }
-        return nodes_buf;
     };
 
-    auto emit_steps = [&sb, &steps]() -> std::vector<char> {
-        std::vector<char> steps_buf;
+    auto emit_steps = [&sb, &payload, &steps]() -> void {
         for (const BuildStep &step : steps) {
             BinStepHeader step_header{
                 .tool = sb.add(step.tool),
@@ -384,20 +386,19 @@ Result<void> emitBin(COBBuilder &builder) {
                 .command_hash = step.command_hash,
                 .depfile_count = step.depfile_inputs.has_value() ? step.depfile_inputs.size() : UINT64_MAX,
             };
-            steps_buf.insert(steps_buf.end(),
-                             reinterpret_cast<const char *>(&step_header),
-                             reinterpret_cast<const char *>(&step_header) + sizeof(BinStepHeader));
+            payload.insert(payload.end(),
+                           reinterpret_cast<const char *>(&step_header),
+                           reinterpret_cast<const char *>(&step_header) + sizeof(BinStepHeader));
 
             if (step.depfile_inputs.has_value()) {
                 for (const std::string_view &di : step.depfile_inputs) {
                     StringRef ref = sb.add(di);
-                    steps_buf.insert(steps_buf.end(),
-                                     reinterpret_cast<const char *>(&ref),
-                                     reinterpret_cast<const char *>(&ref) + sizeof(StringRef));
+                    payload.insert(payload.end(),
+                                   reinterpret_cast<const char *>(&ref),
+                                   reinterpret_cast<const char *>(&ref) + sizeof(StringRef));
                 }
             }
         }
-        return steps_buf;
     };
 
     auto emit_header = [&sb, &nodes, &steps](size_t num_definitions) -> BinHeader {
@@ -410,13 +411,15 @@ Result<void> emitBin(COBBuilder &builder) {
         return header;
     };
 
-    std::vector<BinDefinition> bin_defs = emit_definitions();
-    std::vector<char> nodes_buf = emit_nodes();
-    std::vector<char> steps_buf = emit_steps();
-    BinHeader header = emit_header(bin_defs.size());
+    emit_definitions();
+    emit_nodes();
+    emit_steps();
+    BinHeader header = emit_header(definitions.size());
+    payload.insert(payload.end(), sb.data().begin(), sb.data().end());
+    header.checksum = calculateChecksum(header, {payload.data(), payload.size()});
 
     // NOLINTBEGIN(cppcoreguidelines-narrowing-conversions, bugprone-narrowing-conversions)
-    if (auto write_result = writeBinData(header, bin_defs, nodes_buf, steps_buf, sb.data()); !write_result) {
+    if (auto write_result = writeBinData(header, {payload.data(), payload.size()}); !write_result) {
         std::error_code rm_ec;
         std::filesystem::remove(".catalyst.bin.tmp", rm_ec);
         return write_result;
