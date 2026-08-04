@@ -1,3 +1,49 @@
+// clang-format off
+/*
+ * StringRef:
+ *      offset  uint64_t Offset into the string pool at the end of the file.
+ *      len     uint64_t Length of the string in bytes.
+ *
+ * Strucutre of the binary:
+ *
+ * BinHeader     <-- fixed size
+ * Definitions
+ * Nodes
+ * BuildSteps
+ * String Data   <-- Pool of strings that are referenced by the above structures using StringRef (offset + length).
+ *                   Strings are not neccesarily null-terminated, so the length is required to read them.
+ *                   Strings are deduplicated, so the same string may be referenced multiple times.
+ *
+ * BinHeader:
+ *      char[] Magic   CATB + (L for Linux, M for Mac, W for Windows) + Version Number (3 bytes. Currently 004). 8 bytes total.
+ *      NumDefinitions  uint64_t
+ *      NumNodes        uint64_t
+ *      NumSteps        uint64_t
+ *      StringsSize     uint64_t Size of the string pool at the end of the file.
+ *
+ * Contingous block of definitions:
+ * Definition:     (total 32 bytes)
+ *      StringRef Key
+ *      StringRef Value
+ *
+ * Contiguous block of nodes:
+ * Node:           (variable size)
+ *      Path StringRef
+ *      StepID uint64_t (UINT64_MAX if no step is associated with this node)
+ *      EdgeCount uint64_t
+ *      Edges uint64_t[EdgeCount] indicing the output edges of this node using an adjacency list.
+ *
+ * BinStepHeader:  (total 56 bytes)
+ *      Tool StringRef (cc, cxx, ld, ar, sld, potentially more in the future)
+ *      Inputs StringRef (comma-separated list of input paths, with opaque inputs prefixed with '!')
+ *      Output StringRef (path to the output file)
+ *      ExtraFlags StringRef (additional flags to pass to the tool, e.g. for cxx: -std=c++20 -Wall -Werror)
+ *      CommandHash uint64_t (hash of the command line, used to determine if the command has changed since the last build)
+ *      DepfileCount (number of depfile inputs, UINT64_MAX if no depfile is associated with this step)
+ *      DepfileInputs StringRef[DepfileCount] (paths to the depfile inputs, if any)
+ */
+// clang-format on
+
 #include "cob/binary.hpp"
 
 #include "cob/build_step.hpp"
