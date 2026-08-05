@@ -45,7 +45,7 @@ int main(const int argc, const char *const *argv) {
     }
 
     for (const auto &[variable, value] : definition_overrides) {
-        builder.add_definition(variable, value);
+        builder.overrideDefinition(variable, value);
     }
 
     catalyst::Executor executor{std::move(builder), config};

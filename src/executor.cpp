@@ -20,7 +20,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <fcntl.h> // AT_FDCWD
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -34,6 +33,12 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
+#ifdef __linux__
+#include <cerrno>
+#include <fcntl.h> // AT_FDCWD
+#include <liburing.h>
+#endif
 
 inline constexpr size_t PROGRESS_QUEUE_SZ = FF_cob__progress_queue_size;
 inline constexpr size_t BUF_INIT_CAPACITY = FF_cob__buffer_initial_capacity; // default: 2MB
@@ -178,29 +183,110 @@ Executor::Executor(COBBuilder &&builder, ExecutorConfig config)
 #endif
 }
 
+#ifdef __linux__
+namespace {
+constexpr unsigned CLEAN_QUEUE_DEPTH = FF_cob__clean_ring_capacity;
+
+void unlinkSynchronously(std::span<const std::string> paths) {
+    for (const std::string &path : paths) {
+        ::unlink(path.c_str());
+    }
+}
+
+void unlinkWithIoUring(std::span<const std::string> paths) {
+    io_uring ring{};
+    if (io_uring_queue_init(CLEAN_QUEUE_DEPTH, &ring, 0) < 0) {
+        unlinkSynchronously(paths);
+        return;
+    }
+
+    size_t offset = 0;
+    while (offset < paths.size()) {
+        const size_t remaining = paths.size() - offset;
+        const auto count = static_cast<unsigned>(remaining < CLEAN_QUEUE_DEPTH ? remaining : CLEAN_QUEUE_DEPTH);
+
+        for (unsigned i = 0; i < count; ++i) {
+            io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+            io_uring_prep_unlinkat(sqe, AT_FDCWD, paths[offset + i].c_str(), 0);
+            io_uring_sqe_set_data64(sqe, offset + i);
+        }
+
+        unsigned submitted = 0;
+        while (submitted < count) {
+            const int result = io_uring_submit(&ring);
+            if (result == -EINTR) {
+                continue;
+            }
+            if (result <= 0) {
+                break;
+            }
+            submitted += static_cast<unsigned>(result);
+        }
+
+        io_uring_cqe *first_completion = nullptr;
+        int wait_result = 0;
+        if (submitted > 0) {
+            wait_result = io_uring_wait_cqe_nr(&ring, &first_completion, submitted);
+            while (wait_result == -EINTR) {
+                wait_result = io_uring_wait_cqe_nr(&ring, &first_completion, submitted);
+            }
+        }
+
+        if (submitted != count || wait_result < 0) {
+            io_uring_queue_exit(&ring);
+            unlinkSynchronously(paths.subspan(offset));
+            return;
+        }
+
+        for (unsigned i = 0; i < submitted; ++i) {
+            io_uring_cqe *completion = first_completion;
+            if (i > 0) {
+                io_uring_peek_cqe(&ring, &completion);
+            }
+            if (completion->res < 0 && completion->res != -ENOENT) {
+                ::unlink(paths[io_uring_cqe_get_data64(completion)].c_str());
+            }
+            io_uring_cqe_seen(&ring, completion);
+        }
+        offset += count;
+    }
+
+    io_uring_queue_exit(&ring);
+}
+} // namespace
+#endif
+
 Result<void> Executor::clean() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     std::println("Cleaning build artifacts...");
 
-    std::error_code ec;
-    if (config.clean_cc_only) {
-        for (const BuildStep &step : build_graph.steps()) {
-            // rests on the following assumptions:
-            // 1. we only have ar, ld, and sld
-            // 2. step.tool.size() > 0 which will always happen because of construction
-            //    this is important because step.tool is a std::string_view and out of bounds access is UB
-            // 3. most steps are cc/cxx
-            if (step.tool[0] != 'c') [[unlikely]]
-                continue;
-            std::filesystem::remove(step.output, ec);
+#ifdef __linux__
+    std::vector<std::string> paths;
+    paths.reserve(build_graph.steps().size() * 2);
+#else
+    std::error_code ec; // used to make std::filesystem::remove noexcept
+#endif
+
+    for (const BuildStep &step : build_graph.steps()) {
+        const bool is_compile_step = step.tool[0] == 'c';
+
+        if (config.clean_cc_only && !is_compile_step) [[unlikely]]
+            continue;
+
+#ifdef __linux__
+        paths.emplace_back(step.output);
+        if (is_compile_step)
+            paths.emplace_back(std::string(step.output) + ".d");
+#else
+        std::filesystem::remove(std::filesystem::path(step.output), ec);
+        if (is_compile_step)
             std::filesystem::remove(std::string(step.output) + ".d", ec);
-        }
-    } else {
-        for (const BuildStep &step : build_graph.steps()) {
-            std::filesystem::remove(step.output, ec);
-            std::filesystem::remove(std::string(step.output) + ".d", ec);
-        }
+#endif
     }
+
+#ifdef __linux__
+    unlinkWithIoUring(paths);
+#endif
     return {};
 }
 
@@ -285,7 +371,7 @@ bool inline Executor::needsRebuild(const BuildStep &step,
 }
 
 Result<void> Executor::emitGraph() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     StatCache stat_cache;
 
     const auto cc_vec = builder.getDefinitionOf<std::vector<std::string>>("cc");
@@ -334,7 +420,7 @@ Result<void> Executor::emitGraph() {
 }
 
 Result<void> Executor::emitCompDB() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     std::ofstream f("compile_commands.json");
     std::string cwd = std::filesystem::current_path().string();
 
@@ -406,7 +492,7 @@ Result<void> Executor::emitCompDB() {
 }
 
 Result<void> Executor::emitCommands() {
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
     std::vector<size_t> order;
     auto res = build_graph.topoSort();
     if (!res)
@@ -537,10 +623,10 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
             }
             size_t word_end = extra.find_first_of(" \t", word_start);
             if (word_end == std::string_view::npos) {
-                args.push_back(std::string(extra.substr(word_start)));
+                args.emplace_back(extra.substr(word_start));
                 break;
             }
-            args.push_back(std::string(extra.substr(word_start, word_end - word_start)));
+            args.emplace_back(extra.substr(word_start, word_end - word_start));
             start = word_end;
         }
     };
@@ -622,6 +708,8 @@ Executor::buildCommandArgs(const BuildStep &step, bool dry_run_mode, const Toolc
             args.emplace_back(in);
         args.emplace_back("-o");
         args.emplace_back(step.output);
+        add_parts(flags.ldflags);
+        add_parts(flags.ldlibs);
         add_extra_flags(step.extra_flags);
     }
     return args;
@@ -966,7 +1054,7 @@ void Executor::workerLoop(ExecuteContext &ctx, StatCache &stat_cache, bool is_tt
 Result<void> Executor::execute() {
     pool.clear(); // Ensure clean state
 
-    catalyst::BuildGraph build_graph = builder.emit_graph();
+    catalyst::BuildGraph build_graph = builder.emitGraph();
 
     // If graph is empty
     if (build_graph.nodes().empty())
@@ -1188,7 +1276,7 @@ Result<void> Executor::execute() {
     }
 
     if (!config.dry_run) {
-        builder.graph_ = std::move(ctx.build_graph);
+        builder.m_graph = std::move(ctx.build_graph);
         if (auto bin_res = emitBin(builder); !bin_res) {
             std::println(stderr, "Warning: Failed to write .catalyst.bin: {}", bin_res.error());
         }

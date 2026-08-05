@@ -2,9 +2,9 @@
 
 #include <atomic>
 #include <bit>
-#include <memory>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 namespace catalyst {
 
@@ -12,8 +12,7 @@ namespace catalyst {
  * @brief A lock-free, bounded Multiple-Producer Single-Consumer (MPSC) queue.
  * Based on Dmitry Vyukov's bounded MPMC queue algorithm, but optimized for a single consumer.
  */
-template <typename Value_T>
-class LockFreeMPSCQueue {
+template <typename Value_T> class LockFreeMPSCQueue {
 public:
     explicit LockFreeMPSCQueue(size_t capacity) {
         // Capacity must be a power of two for fast bitmask operations
@@ -32,8 +31,8 @@ public:
      * @param data The item to enqueue.
      * @return true if successful, false if the queue is full.
      */
-    bool enqueue(Value_T const& data) {
-        Cell* cell = nullptr;
+    bool enqueue(Value_T const &data) {
+        Cell *cell = nullptr;
         size_t pos = enqueue_pos.load(std::memory_order_relaxed);
         while (true) {
             cell = &buffer[pos & buffer_mask];
@@ -59,8 +58,8 @@ public:
      * @param data Reference where the dequeued item will be stored.
      * @return true if successful, false if the queue is empty.
      */
-    bool dequeue(Value_T& data) {
-        Cell* cell = nullptr;
+    bool dequeue(Value_T &data) {
+        Cell *cell = nullptr;
         size_t pos = dequeue_pos;
         cell = &buffer[pos & buffer_mask];
         size_t seq = cell->sequence.load(std::memory_order_acquire);

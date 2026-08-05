@@ -53,7 +53,7 @@ behaviors (like dependency generation) by injecting flags.
 | `cxx` | C++ Compile | `$cxx $cxxflags -MMD -MT $out -MF $out.d -c $in -o $out` |
 | `ld` | Binary Link | `$cxx $in -o $out $ldflags $ldlibs` |
 | `ar` | Static Link | `ar rcs $out $in` |
-| `sld` | Shared Link | `$cxx -shared $in -o $out` |
+| `sld` | Shared Link | `$linker -shared $in -o $out $ldflags $ldlibs` |
 
 
 #### Opaque Dependencies

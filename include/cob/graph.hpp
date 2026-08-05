@@ -1,13 +1,13 @@
 #pragma once
 
 #include "cob/build_step.hpp"
+#include "cob/flat_map.hpp"
 #include "cob/utility.hpp"
 
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string_view>
-#include "cob/flat_map.hpp"
 #include <vector>
 
 namespace catalyst {
@@ -76,16 +76,15 @@ public:
         FlatHashMap<std::string_view, size_t, StringViewHash> index;
     };
 
-    //NOLINTBEGIN(cppcoreguidelines-rvalue-reference-param-not-moved)
+    // NOLINTBEGIN(cppcoreguidelines-rvalue-reference-param-not-moved)
     void loadSerializedData(SerializedData &&data) {
         nodes_m = std::move(data.nodes);
         steps_m = std::move(data.steps);
         index = std::move(data.index);
     }
-    //NOLINTEND(cppcoreguidelines-rvalue-reference-param-not-moved)
+    // NOLINTEND(cppcoreguidelines-rvalue-reference-param-not-moved)
 
     friend Result<void> parse(class COBBuilder &, const std::filesystem::path &);
-
 
 private:
     std::vector<Node> nodes_m;

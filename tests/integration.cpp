@@ -1,15 +1,18 @@
 #include "cob-tests/test_suite.hpp"
 #include "cob-tests/testing_utils.hpp"
-
 #include "cob/binary.hpp"
 #include "cob/builder.hpp"
 #include "cob/executor.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <print>
+#include <sstream>
 
 using namespace catalyst;
 
@@ -23,22 +26,23 @@ bool rebuild_command_change_test() {
 
     create_dummy_file("catalyst.build");
     // Set catalyst.build mtime to 1 hour in the past to ensure output files are newer than it
-    std::filesystem::last_write_time("catalyst.build", std::filesystem::last_write_time("catalyst.build") - std::chrono::hours(1));
+    std::filesystem::last_write_time("catalyst.build",
+                                     std::filesystem::last_write_time("catalyst.build") - std::chrono::hours(1));
 
     create_dummy_file("dummy_rebuild.c");
 
     // 1. Initial Build with -DTEST1
     {
         COBBuilder builder;
-        builder.add_definition("cc", "clang");
-        builder.add_definition("cflags", "-DTEST1");
+        builder.addDefinition("cc", "clang");
+        builder.addDefinition("cflags", "-DTEST1");
 
         BuildStep step;
         step.tool = "cc";
         step.inputs = "dummy_rebuild.c";
         step.output = "dummy_rebuild.o";
 
-        auto res = builder.add_step(std::move(step));
+        auto res = builder.addStep(std::move(step));
         if (!res) {
             std::println(std::cerr, "Failed to add step in run 1: {}", res.error());
             return false;
@@ -62,7 +66,7 @@ bool rebuild_command_change_test() {
             return false;
         }
 
-        builder.add_definition("cflags", "-DTEST1");
+        builder.addDefinition("cflags", "-DTEST1");
 
         std::cout << "[Run 2] creating executor..." << std::endl;
         Executor executor(std::move(builder), ExecutorConfig{});
@@ -86,7 +90,7 @@ bool rebuild_command_change_test() {
             return false;
         }
 
-        builder.add_definition("cflags", "-DTEST2");
+        builder.addDefinition("cflags", "-DTEST2");
 
         std::cout << "[Run 3] creating executor..." << std::endl;
         Executor executor(std::move(builder), ExecutorConfig{});
@@ -115,6 +119,79 @@ bool rebuild_command_change_test() {
     return true;
 }
 
+bool binaryChecksumTest() {
+    std::println("Starting Binary Checksum Test...");
+
+    COBBuilder builder;
+    builder.addDefinition("cc", "clang");
+    if (auto emit_result = emitBin(builder); !emit_result) {
+        std::println(std::cerr, "Failed to emit binary cache: {}", emit_result.error());
+        return false;
+    }
+
+    std::fstream binary(".catalyst.bin", std::ios::in | std::ios::out | std::ios::binary);
+    binary.seekg(-1, std::ios::end);
+    char byte = 0;
+    binary.read(&byte, 1);
+    byte ^= 1;
+    binary.seekp(-1, std::ios::end);
+    binary.write(&byte, 1);
+    binary.close();
+    if (!binary) {
+        std::println(std::cerr, "Failed to corrupt binary cache for checksum test");
+        std::filesystem::remove(".catalyst.bin");
+        return false;
+    }
+
+    COBBuilder parsed_builder;
+    auto parse_result = parseBin(parsed_builder);
+    std::filesystem::remove(".catalyst.bin");
+    if (parse_result || !parse_result.error().contains("Checksum mismatch")) {
+        std::println(std::cerr, "Corrupted binary cache was not rejected by its checksum");
+        return false;
+    }
+
+    std::println("Binary Checksum Test passed!");
+    return true;
+}
+
+bool binaryEndiannessTest() {
+    std::println("Starting Binary Endianness Test...");
+
+    COBBuilder builder;
+    builder.addDefinition("cc", "clang");
+    if (auto emit_result = emitBin(builder); !emit_result) {
+        std::println(std::cerr, "Failed to emit binary cache: {}", emit_result.error());
+        return false;
+    }
+
+    constexpr std::streamoff MAGIC_SIZE = 8;
+    std::fstream binary(".catalyst.bin", std::ios::in | std::ios::out | std::ios::binary);
+    binary.seekg(MAGIC_SIZE);
+    std::array<char, sizeof(uint64_t)> marker{};
+    binary.read(marker.data(), marker.size());
+    std::ranges::reverse(marker);
+    binary.seekp(MAGIC_SIZE);
+    binary.write(marker.data(), marker.size());
+    binary.close();
+    if (!binary) {
+        std::println(std::cerr, "Failed to reverse binary cache endianness marker");
+        std::filesystem::remove(".catalyst.bin");
+        return false;
+    }
+
+    COBBuilder parsed_builder;
+    auto parse_result = parseBin(parsed_builder);
+    std::filesystem::remove(".catalyst.bin");
+    if (parse_result || !parse_result.error().contains("Incompatible endianness")) {
+        std::println(std::cerr, "Opposite-endian binary cache was not rejected");
+        return false;
+    }
+
+    std::println("Binary Endianness Test passed!");
+    return true;
+}
+
 bool build_step_extra_test() {
     std::println("Starting BuildStepExtra Spacing and Compilation Test...");
 
@@ -124,8 +201,7 @@ bool build_step_extra_test() {
         "cc|dummy_extra.c|dummy_extra.o|extra =-DEXTRA_TEST_FLAG",
         "cc|dummy_extra.c|dummy_extra.o|extra= -DEXTRA_TEST_FLAG",
         "cc|dummy_extra.c|dummy_extra.o|invalid_key = -DEXTRA_TEST_FLAG",
-        "cc|dummy_extra.c|dummy_extra.o|extra"
-    };
+        "cc|dummy_extra.c|dummy_extra.o|extra"};
 
     for (const auto &manifest_content : invalid_manifests) {
         std::ofstream out("catalyst.build");
@@ -136,7 +212,8 @@ bool build_step_extra_test() {
         auto res = parse(builder, "catalyst.build");
         std::filesystem::remove("catalyst.build");
         if (res) {
-            std::println(std::cerr, "Failed: Manifest parsed successfully but should have failed: {}", manifest_content);
+            std::println(
+                std::cerr, "Failed: Manifest parsed successfully but should have failed: {}", manifest_content);
             return false;
         }
     }
@@ -149,8 +226,7 @@ bool build_step_extra_test() {
     const std::vector<std::string> valid_manifests = {
         "DEF|cc|clang\ncc|dummy_extra.c|dummy_extra.o|extra = -DEXTRA_TEST_FLAG",
         "DEF|cc|clang\ncc|dummy_extra.c|dummy_extra.o|extra  =  -DEXTRA_TEST_FLAG",
-        "DEF|cc|clang\ncc|dummy_extra.c|dummy_extra.o|extra \t=\t -DEXTRA_TEST_FLAG"
-    };
+        "DEF|cc|clang\ncc|dummy_extra.c|dummy_extra.o|extra \t=\t -DEXTRA_TEST_FLAG"};
 
     for (const auto &manifest_content : valid_manifests) {
         if (std::filesystem::exists("dummy_extra.o")) {
@@ -195,17 +271,58 @@ bool build_step_extra_test() {
     return true;
 }
 
+bool sharedLinkFlagsTest() {
+    std::println("Starting Shared-Link Flags Test...");
+
+    COBBuilder builder;
+    builder.addDefinition("linker", "clang++");
+    builder.addDefinition("ldflags", "-Wl,--no-undefined -L/custom/lib");
+    builder.addDefinition("ldlibs", "-lcustom");
+
+    BuildStep step;
+    step.tool = "sld";
+    step.inputs = "dummy.o";
+    step.output = "libdummy.so";
+
+    if (auto result = builder.addStep(std::move(step)); !result) {
+        std::println(std::cerr, "Failed to add shared-link step: {}", result.error());
+        return false;
+    }
+
+    Executor executor(std::move(builder), ExecutorConfig{});
+    std::ostringstream commands;
+    std::streambuf *original_buffer = std::cout.rdbuf(commands.rdbuf());
+    auto result = executor.emitCommands();
+    std::cout.rdbuf(original_buffer);
+
+    if (!result) {
+        std::println(std::cerr, "Failed to emit shared-link command: {}", result.error());
+        return false;
+    }
+
+    const std::string command = commands.str();
+    if (!command.contains("-Wl,--no-undefined") || !command.contains("-L/custom/lib") ||
+        !command.contains("-lcustom")) {
+        std::println(std::cerr, "Shared-link command omitted linker flags or libraries: {}", command);
+        return false;
+    }
+
+    std::println("Shared-Link Flags Test passed!");
+    return true;
+}
+
 bool integration_test() {
     // Setup
     std::println("Starting Integration Test...");
     create_dummy_file("catalyst.build");
-    std::filesystem::last_write_time("catalyst.build", std::filesystem::last_write_time("catalyst.build") - std::chrono::hours(1));
+    std::filesystem::last_write_time("catalyst.build",
+                                     std::filesystem::last_write_time("catalyst.build") - std::chrono::hours(1));
 
     create_dummy_file("dummy.c");
 
     COBBuilder builder;
-    builder.add_definition("cc", "clang"); // Mock cc with echo
-    builder.add_definition("cflags", "-DTEST");
+    builder.addDefinition("cc", "clang"); // Mock cc with echo
+    builder.addDefinition("cflags", "-DTEST");
 
     BuildStep step;
     step.tool = "cc";
@@ -213,7 +330,7 @@ bool integration_test() {
     step.output = "dummy.o";
 
     // Add step
-    auto res = builder.add_step(std::move(step));
+    auto res = builder.addStep(std::move(step));
     if (!res) {
         std::println(std::cerr, "Failed to add step: {}", res.error());
         return false;
@@ -239,6 +356,16 @@ bool integration_test() {
     if (std::filesystem::exists("catalyst.build"))
         std::filesystem::remove("catalyst.build");
 
+    // Run binary checksum test
+    if (!binaryChecksumTest()) {
+        return false;
+    }
+
+    // Run binary endianness test
+    if (!binaryEndiannessTest()) {
+        return false;
+    }
+
     // Run BuildStepExtra spacing and compilation test
     if (!build_step_extra_test()) {
         return false;
@@ -249,5 +376,5 @@ bool integration_test() {
         return false;
     }
 
-    return true;
+    return sharedLinkFlagsTest();
 }

@@ -25,23 +25,23 @@ public:
      * @param bs The build step to add.
      * @return Success or error.
      */
-    Result<void> add_step(BuildStep &&bs) {
-        auto res = graph_.addStep(std::move(bs));
+    Result<void> addStep(BuildStep &&bs) {
+        auto res = m_graph.addStep(std::move(bs));
         if (!res)
             return std::unexpected(res.error());
         return {};
     }
 
-    const BuildGraph &graph() const {
-        return graph_;
+    [[nodiscard]] const BuildGraph &graph() const {
+        return m_graph;
     }
 
     /**
      * @brief Returns the built graph by moving it out of the builder.
      * @return The completed `BuildGraph`.
      */
-    BuildGraph &&emit_graph() {
-        return std::move(graph_);
+    BuildGraph &&emitGraph() {
+        return std::move(m_graph);
     }
 
     /**
@@ -49,33 +49,42 @@ public:
      * @param key The name of the definition.
      * @param value The value of the definition.
      */
-    void add_definition(std::string_view key, std::string_view value) {
-        definitions_.emplace(key, value);
+    void addDefinition(std::string_view key, std::string_view value) {
+        m_definitions.emplace(key, value);
+    }
+
+    /**
+     * @brief Override a definition
+     * @param key The name of the definition.
+     * @param value The value of the definition.
+     */
+    void overrideDefinition(std::string_view key, std::string_view value) {
+        m_definitions.insert_or_assign(key, value);
     }
 
     /**
      * @brief Registers a resource to be managed by the graph's lifetime.
      * @param res A shared pointer to the resource.
      */
-    void add_resource(std::shared_ptr<void> res) {
-        graph_.addResource(std::move(res));
+    void addResource(std::shared_ptr<void> res) {
+        m_graph.addResource(std::move(res));
     }
 
-    const Definitions &definitions() const {
-        return definitions_;
+    [[nodiscard]] const Definitions &definitions() const {
+        return m_definitions;
     }
 
-    void load_graph_data(BuildGraph::SerializedData &&data) {
-        graph_.loadSerializedData(std::move(data));
+    void loadGraphData(BuildGraph::SerializedData &&data) {
+        m_graph.loadSerializedData(std::move(data));
     }
 
     friend Result<void> parse(COBBuilder &, const std::filesystem::path &);
     friend class Executor;
 
 private:
-    template <typename Return_T> Return_T getDefinitionOf(std::string_view key) const {
+    template <typename Return_T> [[nodiscard]] Return_T getDefinitionOf(std::string_view key) const {
         if constexpr (std::is_same_v<Return_T, std::string>) {
-            if (const Definitions::const_iterator it = definitions_.find(key); it != definitions_.end())
+            if (const Definitions::const_iterator it = m_definitions.find(key); it != m_definitions.end())
                 return std::string(it->second);
             return "";
         } else if constexpr (std::is_same_v<Return_T, std::vector<std::string>>) {
@@ -86,7 +95,7 @@ private:
         }
     }
 
-    std::vector<std::string> getLinkerVec(const std::vector<std::string> &cxx_vec) const {
+    [[nodiscard]] std::vector<std::string> getLinkerVec(const std::vector<std::string> &cxx_vec) const {
         auto linker_vec = getDefinitionOf<std::vector<std::string>>("linker");
         if (linker_vec.empty() || (linker_vec.size() == 1 && linker_vec[0].empty())) {
             linker_vec = cxx_vec;
@@ -94,7 +103,7 @@ private:
         return linker_vec;
     }
 
-    std::vector<std::string> getArchiverVec() const {
+    [[nodiscard]] std::vector<std::string> getArchiverVec() const {
         auto archiver_vec = getDefinitionOf<std::vector<std::string>>("archiver");
         if (archiver_vec.empty() || (archiver_vec.size() == 1 && archiver_vec[0].empty())) {
 #if defined(__APPLE__)
@@ -108,8 +117,8 @@ private:
         return archiver_vec;
     }
 
-    BuildGraph graph_;
-    Definitions definitions_;
+    BuildGraph m_graph;
+    Definitions m_definitions;
 };
 
 } // namespace catalyst

@@ -5,9 +5,9 @@
 #include "cob/file_handle.hpp"
 #include "cob/utility.hpp"
 
-#include <print>
 #include <iostream>
 #include <memory>
+#include <print>
 #include <string_view>
 
 namespace catalyst {
@@ -25,8 +25,8 @@ Result<void> parseDEF(const std::string_view line, COBBuilder &builder) {
         return std::unexpected(std::format("Malformed def line (missing second pipe): {}", line));
     }
 
-    builder.add_definition(line.substr(first_pipe + 1, second_pipe - (first_pipe + 1)), // key
-                           line.substr(second_pipe + 1)                                 // value
+    builder.addDefinition(line.substr(first_pipe + 1, second_pipe - (first_pipe + 1)), // key
+                          line.substr(second_pipe + 1)                                 // value
     );
 
     return {};
@@ -57,7 +57,7 @@ Result<void> parseStep(const std::string_view line, COBBuilder &builder) {
         if (!extra_part.starts_with("extra")) {
             return std::unexpected(std::format("Malformed step extra part (must start with 'extra'): {}", line));
         }
-        std::string_view after_extra = extra_part.substr(5);
+        std::string_view after_extra = extra_part.substr(sizeof("extra") - 1);
         if (after_extra.empty() || (after_extra[0] != ' ' && after_extra[0] != '\t')) {
             return std::unexpected(std::format("Malformed step extra part (missing spacing before '='): {}", line));
         }
@@ -68,7 +68,8 @@ Result<void> parseStep(const std::string_view line, COBBuilder &builder) {
         std::string_view before_eq = after_extra.substr(0, eq_pos);
         for (char c : before_eq) {
             if (c != ' ' && c != '\t') {
-                return std::unexpected(std::format("Malformed step extra part (invalid character before '='): {}", line));
+                return std::unexpected(
+                    std::format("Malformed step extra part (invalid character before '='): {}", line));
             }
         }
         std::string_view after_eq = after_extra.substr(eq_pos + 1);
@@ -81,13 +82,13 @@ Result<void> parseStep(const std::string_view line, COBBuilder &builder) {
         }
     }
 
-    Result<void> res = builder.add_step({.tool = tool,
-                                         .inputs = inputs,
-                                         .output = output,
-                                         .opaque_inputs = {},
-                                         .depfile_inputs = {},
-                                         .parsed_inputs = {},
-                                         .extra_flags = extra_flags});
+    Result<void> res = builder.addStep({.tool = tool,
+                                        .inputs = inputs,
+                                        .output = output,
+                                        .opaque_inputs = {},
+                                        .depfile_inputs = {},
+                                        .parsed_inputs = {},
+                                        .extra_flags = extra_flags});
     if (!res) {
         return std::unexpected(res.error());
     }
@@ -111,7 +112,7 @@ Result<void> parse(COBBuilder &builder, const std::filesystem::path &path) {
     std::string_view content;
     try {
         auto file = std::make_shared<MappedFile>(path);
-        builder.add_resource(file);
+        builder.addResource(file);
         content = file->content();
     } catch (const std::exception &err) {
         return std::unexpected(err.what());
