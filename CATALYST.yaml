@@ -19,6 +19,8 @@ common:
       source: vcpkg
       triplet: x64-linux
       version: latest
+    - name: liburing
+      source: system
   features:
     - binary: true
     - profiling: false
@@ -51,6 +53,9 @@ common:
     - map_initial_capacity:
         type: int
         default: 16
+    - clean_ring_capacity:
+        type: int
+        default: 64
 test:
   manifest:
     dirs:
