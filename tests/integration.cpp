@@ -4,7 +4,10 @@
 #include "cob/builder.hpp"
 #include "cob/executor.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -149,6 +152,43 @@ bool binaryChecksumTest() {
     }
 
     std::println("Binary Checksum Test passed!");
+    return true;
+}
+
+bool binaryEndiannessTest() {
+    std::println("Starting Binary Endianness Test...");
+
+    COBBuilder builder;
+    builder.addDefinition("cc", "clang");
+    if (auto emit_result = emitBin(builder); !emit_result) {
+        std::println(std::cerr, "Failed to emit binary cache: {}", emit_result.error());
+        return false;
+    }
+
+    constexpr std::streamoff MAGIC_SIZE = 8;
+    std::fstream binary(".catalyst.bin", std::ios::in | std::ios::out | std::ios::binary);
+    binary.seekg(MAGIC_SIZE);
+    std::array<char, sizeof(uint64_t)> marker{};
+    binary.read(marker.data(), marker.size());
+    std::ranges::reverse(marker);
+    binary.seekp(MAGIC_SIZE);
+    binary.write(marker.data(), marker.size());
+    binary.close();
+    if (!binary) {
+        std::println(std::cerr, "Failed to reverse binary cache endianness marker");
+        std::filesystem::remove(".catalyst.bin");
+        return false;
+    }
+
+    COBBuilder parsed_builder;
+    auto parse_result = parseBin(parsed_builder);
+    std::filesystem::remove(".catalyst.bin");
+    if (parse_result || !parse_result.error().contains("Incompatible endianness")) {
+        std::println(std::cerr, "Opposite-endian binary cache was not rejected");
+        return false;
+    }
+
+    std::println("Binary Endianness Test passed!");
     return true;
 }
 
@@ -318,6 +358,11 @@ bool integration_test() {
 
     // Run binary checksum test
     if (!binaryChecksumTest()) {
+        return false;
+    }
+
+    // Run binary endianness test
+    if (!binaryEndiannessTest()) {
         return false;
     }
 

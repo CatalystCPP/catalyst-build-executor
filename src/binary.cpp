@@ -16,6 +16,7 @@
  *
  * BinHeader:
  *      char[] Magic   CATB + (L for Linux, M for Mac, W for Windows) + Version Number (3 bytes. Currently 004). 8 bytes total.
+ *      EndianMarker    uint64_t Native-endian representation of 0x0102030405060708.
  *      NumDefinitions  uint64_t
  *      NumNodes        uint64_t
  *      NumSteps        uint64_t
@@ -112,7 +113,13 @@ private:
 };
 
 struct BinHeader {
+    enum class EndianMarker : uint64_t {
+        EXPECTED = 0x0102030405060708ULL,
+        BYTE_REVERSED = 0x0807060504030201ULL,
+    };
+
     std::array<char, MAGIC.size()> magic;
+    EndianMarker endian_marker;
     uint64_t num_definitions;
     uint64_t num_nodes;
     uint64_t num_steps;
@@ -268,6 +275,12 @@ Result<void> parseBin(COBBuilder &builder) {
     const auto *header = reinterpret_cast<const BinHeader *>(content.data());
     if (std::memcmp(header->magic.data(), MAGIC.data(), MAGIC.size()) != 0) {
         return std::unexpected("Invalid magic or version in .catalyst.bin");
+    }
+    if (header->endian_marker != BinHeader::EndianMarker::EXPECTED) {
+        if (header->endian_marker == BinHeader::EndianMarker::BYTE_REVERSED) {
+            return std::unexpected("Incompatible endianness in .catalyst.bin");
+        }
+        return std::unexpected("Invalid endianness marker in .catalyst.bin");
     }
 
     std::string_view payload = content.substr(sizeof(BinHeader));
@@ -457,6 +470,7 @@ Result<void> emitBin(COBBuilder &builder) {
     auto emit_header = [&sb, &nodes, &steps](size_t num_definitions) -> BinHeader {
         BinHeader header{};
         std::memcpy(header.magic.data(), MAGIC.data(), MAGIC.size());
+        header.endian_marker = BinHeader::EndianMarker::EXPECTED;
         header.num_definitions = num_definitions;
         header.num_nodes = nodes.size();
         header.num_steps = steps.size();
