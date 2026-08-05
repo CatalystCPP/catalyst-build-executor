@@ -20,7 +20,8 @@ common:
       triplet: x64-linux
       version: latest
     - name: liburing
-      source: system
+      source: custom
+      script: scripts/find_liburing.sh
   features:
     - binary: true
     - profiling: false
