@@ -15,7 +15,7 @@
  *                   Strings are deduplicated, so the same string may be referenced multiple times.
  *
  * BinHeader:
- *      char[] Magic   CATB + (L for Linux, M for Mac, W for Windows) + Version Number (3 bytes. Currently 004). 8 bytes total.
+ *      char[8] Magic   CATB + (L for Linux, M for Mac, W for Windows) + Version Number (3 bytes).
  *      EndianMarker    uint64_t Native-endian representation of 0x0102030405060708.
  *      NumDefinitions  uint64_t
  *      NumNodes        uint64_t
@@ -56,10 +56,12 @@
 #include "cob/flat_map.hpp"
 #include "cob/graph.hpp"
 #include "cob/optional_vector.hpp"
+#include "cob/utility.hpp"
 #ifdef __linux__
 #include "cob/file_descriptor.hpp"
 #endif
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdint>
@@ -80,14 +82,15 @@ namespace catalyst {
 
 namespace {
 
-constexpr std::string_view MAGIC =
+constexpr std::string_view MAGIC = "CATB"
 #ifdef __linux__
-    "CATBL004";
+                                   "L"
 #elif defined(__APPLE__)
-    "CATBM004";
+                                   "M"
 #elif defined(_WIN32) || defined(_WIN64)
-    "CATBW004";
+                                   "W"
 #endif
+                                   "004";
 
 class StringBuffer {
 public:
@@ -273,119 +276,138 @@ Result<void> parseBin(COBBuilder &builder) {
     }
 
     const auto *header = reinterpret_cast<const BinHeader *>(content.data());
-    if (std::memcmp(header->magic.data(), MAGIC.data(), MAGIC.size()) != 0) {
-        return std::unexpected("Invalid magic or version in .catalyst.bin");
-    }
-    if (header->endian_marker != BinHeader::EndianMarker::EXPECTED) {
-        if (header->endian_marker == BinHeader::EndianMarker::BYTE_REVERSED) {
-            return std::unexpected("Incompatible endianness in .catalyst.bin");
-        }
-        return std::unexpected("Invalid endianness marker in .catalyst.bin");
-    }
-
-    std::string_view payload = content.substr(sizeof(BinHeader));
-    if (calculateChecksum(*header, payload) != header->checksum) {
-        return std::unexpected("Checksum mismatch in .catalyst.bin");
-    }
-
-    if (header->strings_size > content.size() - sizeof(BinHeader)) {
-        return std::unexpected("Malformed .catalyst.bin: strings_size too large");
-    }
-
-    const char *ptr = content.data() + sizeof(BinHeader);
-    const char *strings_base = content.data() + content.size() - header->strings_size;
-
-    auto get_sv = [&](StringRef ref) -> std::string_view { return {strings_base + ref.offset, ref.len}; };
-
-    // 1. Definitions
-    for (uint64_t i = 0; i < header->num_definitions; ++i) {
-        const auto *def = reinterpret_cast<const BinDefinition *>(ptr);
-        builder.addDefinition(get_sv(def->key), get_sv(def->val));
-        ptr += sizeof(BinDefinition);
-    }
-
-    // 2. Nodes
+    const char *content_body_ptr = content.data() + sizeof(BinHeader);
+    const char *strings_base = nullptr;
+    uint64_t num_definitions = 0;
     std::vector<BuildGraph::Node> nodes;
     FlatHashMap<std::string_view, size_t, StringViewHash> index;
-    nodes.reserve(header->num_nodes);
-    index.reserve(header->num_nodes);
-
-    for (uint64_t i = 0; i < header->num_nodes; ++i) {
-        StringRef path_ref = *reinterpret_cast<const StringRef *>(ptr);
-        ptr += sizeof(StringRef);
-        uint64_t step_id_raw = *reinterpret_cast<const uint64_t *>(ptr);
-        ptr += sizeof(uint64_t);
-        uint64_t num_out_edges = *reinterpret_cast<const uint64_t *>(ptr);
-        ptr += sizeof(uint64_t);
-
-        std::optional<size_t> step_id = (step_id_raw == UINT64_MAX) ? std::nullopt : std::make_optional(step_id_raw);
-        std::vector<size_t> out_edges;
-        out_edges.reserve(num_out_edges);
-        for (uint64_t j = 0; j < num_out_edges; ++j) {
-            out_edges.push_back(*reinterpret_cast<const uint64_t *>(ptr));
-            ptr += sizeof(uint64_t);
-        }
-
-        std::string_view path = get_sv(path_ref);
-        nodes.push_back({.path = path, .out_edges = std::move(out_edges), .step_id = step_id});
-        index.emplace(path, i);
-    }
-
-    // 3. Steps
     std::vector<BuildStep> steps;
-    steps.reserve(header->num_steps);
+    auto get_sv = [&](StringRef ref) -> std::string_view { return {strings_base + ref.offset, ref.len}; };
 
-    for (uint64_t i = 0; i < header->num_steps; ++i) {
-        const auto *step_header = reinterpret_cast<const BinStepHeader *>(ptr);
-        ptr += sizeof(BinStepHeader);
-
-        std::string_view tool = stringFromToolKind(step_header->tool);
-        if (tool.empty()) {
-            return std::unexpected(std::format("Malformed .catalyst.bin: invalid tool kind {}",
-                                               static_cast<unsigned int>(step_header->tool)));
+    auto parse_header = [&content, &header, &strings_base, &num_definitions]() -> Result<void> {
+        if (std::memcmp(header->magic.data(), MAGIC.data(), MAGIC.size()) != 0) {
+            return std::unexpected("Invalid magic or version in .catalyst.bin");
         }
 
-        catalyst::optional_vector<std::string_view> depfile_inputs;
-        if (step_header->depfile_count != UINT64_MAX) {
-            depfile_inputs.reserve(step_header->depfile_count);
-            for (uint64_t j = 0; j < step_header->depfile_count; ++j) {
-                StringRef ref = *reinterpret_cast<const StringRef *>(ptr);
-                ptr += sizeof(StringRef);
-                depfile_inputs.push_back(get_sv(ref));
+        if (header->endian_marker != BinHeader::EndianMarker::EXPECTED) {
+            if (header->endian_marker == BinHeader::EndianMarker::BYTE_REVERSED) {
+                return std::unexpected("Incompatible endianness in .catalyst.bin");
             }
+            return std::unexpected("Invalid endianness marker in .catalyst.bin");
         }
 
-        std::vector<std::string_view> parsed_inputs;
-        catalyst::optional_vector<std::string_view> opaque_inputs;
-        std::string_view remaining = get_sv(step_header->inputs);
-        while (!remaining.empty()) {
-            size_t comma_pos = remaining.find(',');
-            std::string_view in_path;
-            if (comma_pos == std::string_view::npos) {
-                in_path = remaining;
-                remaining = {};
-            } else {
-                in_path = remaining.substr(0, comma_pos);
-                remaining = remaining.substr(comma_pos + 1);
+        std::string_view payload = content.substr(sizeof(BinHeader));
+        if (calculateChecksum(*header, payload) != header->checksum) {
+            return std::unexpected("Checksum mismatch in .catalyst.bin");
+        }
+
+        if (header->strings_size > content.size() - sizeof(BinHeader)) {
+            return std::unexpected("Malformed .catalyst.bin: strings_size too large");
+        }
+        strings_base = content.data() + content.size() - header->strings_size;
+        num_definitions = header->num_definitions;
+        return {};
+    };
+
+    auto parse_definitions = [&content_body_ptr, &num_definitions, &builder, get_sv]() -> void {
+        const auto *defs = reinterpret_cast<const BinDefinition *>(content_body_ptr);
+        std::for_each_n(defs, num_definitions, [&builder, get_sv](const BinDefinition &def) -> void {
+            builder.addDefinition(get_sv(def.key), get_sv(def.val));
+        });
+        content_body_ptr += num_definitions * sizeof(BinDefinition);
+    };
+
+    auto parse_nodes = [&content_body_ptr, &header, &nodes, &index, get_sv]() -> void {
+        nodes.reserve(header->num_nodes);
+        index.reserve(header->num_nodes);
+
+        for (uint64_t i = 0; i < header->num_nodes; ++i) {
+            StringRef path_ref = *reinterpret_cast<const StringRef *>(content_body_ptr);
+            content_body_ptr += sizeof(StringRef);
+            uint64_t step_id_raw = *reinterpret_cast<const uint64_t *>(content_body_ptr);
+            content_body_ptr += sizeof(uint64_t);
+            uint64_t num_out_edges = *reinterpret_cast<const uint64_t *>(content_body_ptr);
+            content_body_ptr += sizeof(uint64_t);
+
+            std::optional<size_t> step_id =
+                (step_id_raw == UINT64_MAX) ? std::nullopt : std::make_optional(step_id_raw);
+            std::vector<size_t> out_edges;
+            out_edges.reserve(num_out_edges);
+            for (uint64_t j = 0; j < num_out_edges; ++j) {
+                out_edges.push_back(*reinterpret_cast<const uint64_t *>(content_body_ptr));
+                content_body_ptr += sizeof(uint64_t);
             }
-            if (!in_path.empty()) {
-                if (in_path.starts_with('!')) {
-                    opaque_inputs.push_back(in_path.substr(1));
-                } else {
-                    parsed_inputs.push_back(in_path);
+
+            std::string_view path = get_sv(path_ref);
+            nodes.push_back({.path = path, .out_edges = std::move(out_edges), .step_id = step_id});
+            index.emplace(path, i);
+        }
+    };
+
+    auto parse_steps = [&content_body_ptr, &header, &steps, get_sv]() -> Result<void> {
+        steps.reserve(header->num_steps);
+
+        for (uint64_t i = 0; i < header->num_steps; ++i) {
+            const auto *step_header = reinterpret_cast<const BinStepHeader *>(content_body_ptr);
+            content_body_ptr += sizeof(BinStepHeader);
+
+            std::string_view tool = stringFromToolKind(step_header->tool);
+            if (tool.empty()) {
+                return std::unexpected(std::format("Malformed .catalyst.bin: invalid tool kind {}",
+                                                   static_cast<unsigned int>(step_header->tool)));
+            }
+
+            catalyst::optional_vector<std::string_view> depfile_inputs;
+            if (step_header->depfile_count != UINT64_MAX) {
+                depfile_inputs.reserve(step_header->depfile_count);
+                for (uint64_t j = 0; j < step_header->depfile_count; ++j) {
+                    StringRef ref = *reinterpret_cast<const StringRef *>(content_body_ptr);
+                    content_body_ptr += sizeof(StringRef);
+                    depfile_inputs.push_back(get_sv(ref));
                 }
             }
-        }
 
-        steps.push_back({.tool = tool,
-                         .inputs = get_sv(step_header->inputs),
-                         .output = get_sv(step_header->output),
-                         .opaque_inputs = std::move(opaque_inputs),
-                         .depfile_inputs = std::move(depfile_inputs),
-                         .parsed_inputs = std::move(parsed_inputs),
-                         .extra_flags = get_sv(step_header->extra_flags),
-                         .command_hash = step_header->command_hash});
-    }
+            std::vector<std::string_view> parsed_inputs;
+            catalyst::optional_vector<std::string_view> opaque_inputs;
+            std::string_view remaining = get_sv(step_header->inputs);
+            while (!remaining.empty()) {
+                size_t comma_pos = remaining.find(',');
+                std::string_view in_path;
+                if (comma_pos == std::string_view::npos) {
+                    in_path = remaining;
+                    remaining = {};
+                } else {
+                    in_path = remaining.substr(0, comma_pos);
+                    remaining = remaining.substr(comma_pos + 1);
+                }
+                if (!in_path.empty()) {
+                    if (in_path.starts_with('!')) {
+                        opaque_inputs.push_back(in_path.substr(1));
+                    } else {
+                        parsed_inputs.push_back(in_path);
+                    }
+                }
+            }
+
+            steps.push_back({.tool = tool,
+                             .inputs = get_sv(step_header->inputs),
+                             .output = get_sv(step_header->output),
+                             .opaque_inputs = std::move(opaque_inputs),
+                             .depfile_inputs = std::move(depfile_inputs),
+                             .parsed_inputs = std::move(parsed_inputs),
+                             .extra_flags = get_sv(step_header->extra_flags),
+                             .command_hash = step_header->command_hash});
+        }
+        return {};
+    };
+
+    Result<void> result;
+    if (result = parse_header(); !result)
+        return result;
+    parse_definitions();
+    parse_nodes();
+    if (result = parse_steps(); !result)
+        return result;
 
     builder.loadGraphData(
         BuildGraph::SerializedData{.nodes = std::move(nodes), .steps = std::move(steps), .index = std::move(index)});
