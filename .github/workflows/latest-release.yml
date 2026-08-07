@@ -8,7 +8,9 @@ on:
     paths:
       - 'src/**'
       - 'include/**'
+      - 'scripts/**'
       - 'CATALYST.yaml'
+      - '.github/workflows/latest-release.yml'
   workflow_dispatch:
 
 permissions:
