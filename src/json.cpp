@@ -1,3 +1,6 @@
+// Copyright 2026 Siddharth Mohanty
+// SPDX-License-Identifier: Apache-2.0
+
 #if FF_cob__json_impl
 #include "cob/json.hpp"
 using catalyst::JSON;

@@ -1,3 +1,6 @@
+// Copyright 2026 Siddharth Mohanty
+// SPDX-License-Identifier: Apache-2.0
+
 #pragma once
 
 #include "cob/process_exec.hpp"

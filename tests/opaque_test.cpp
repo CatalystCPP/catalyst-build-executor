@@ -1,3 +1,6 @@
+// Copyright 2026 Siddharth Mohanty
+// SPDX-License-Identifier: Apache-2.0
+
 #include "cob/builder.hpp"
 #include "cob/executor.hpp"
 #include "cob/parser.hpp"

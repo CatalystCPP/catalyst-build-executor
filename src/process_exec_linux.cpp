@@ -1,3 +1,6 @@
+// Copyright 2026 Siddharth Mohanty
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #include <exception>

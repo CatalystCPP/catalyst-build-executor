@@ -1,3 +1,6 @@
+// Copyright 2026 Siddharth Mohanty
+// SPDX-License-Identifier: Apache-2.0
+
 #include "cob/work_estimate.hpp"
 
 #if FF_cob__estimates
