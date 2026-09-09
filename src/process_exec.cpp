@@ -7,6 +7,7 @@
 #include "process_exec_linux.hpp"
 #else
 #include "cob/utility.hpp"
+#include "process_environment.hpp"
 
 #include <expected>
 #include <optional>
@@ -45,6 +46,9 @@ Result<std::pair<int, std::string>> process_exec(const std::vector<std::string> 
     std::vector<std::string> env_strings;
     std::vector<const char *> env_ptrs;
     if (env) {
+        if (auto validation = detail::validateEnvironment(*env); !validation) {
+            return std::unexpected(validation.error());
+        }
         options.env.behavior = reproc::env::extend;
         for (const auto &[key, value] : *env) {
             std::string &s = env_strings.emplace_back();
@@ -70,7 +74,7 @@ Result<std::pair<int, std::string>> process_exec(const std::vector<std::string> 
     if (ec) {
         return std::unexpected(std::format("Failed to execute '{}': {}", args.front(), ec.message()));
     }
-    return std::pair<int, std::string>{status, captured};
+    return std::pair<int, std::string>{status, std::move(captured)};
 #endif
 }
 } // namespace catalyst

@@ -3,8 +3,17 @@
 
 #include "cob/cli_args.hpp"
 
+#include <charconv>
 #include <cstring>
 #include <print>
+
+#ifndef CATALYST_PROJ_NAME
+#define CATALYST_PROJ_NAME "cob"
+#endif
+
+#ifndef CATALYST_PROJ_VER
+#define CATALYST_PROJ_VER "unknown"
+#endif
 
 namespace catalyst {
 Result<CliArgs> cliArgs(const int argc, const char *const *argv) {

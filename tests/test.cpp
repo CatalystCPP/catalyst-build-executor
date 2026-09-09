@@ -6,5 +6,5 @@
 #include <cassert>
 
 int main(int argc, char **argv) {
-    return !(stat_cache_test() && integration_test());
+    return !(stat_cache_test() && integration_test() && process_exec_test());
 }

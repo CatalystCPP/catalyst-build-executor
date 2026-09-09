@@ -88,9 +88,9 @@ public:
             return;
         }
 
+#ifdef __linux__
         posix_fadvise(file_descriptor, 0, 0, POSIX_FADV_SEQUENTIAL);
 
-#ifdef __linux__
         int flags = populate ? (MAP_POPULATE | MAP_PRIVATE) : MAP_PRIVATE;
         void *addr = mmap(nullptr, file_size, PROT_READ, flags, file_descriptor, 0);
 #else

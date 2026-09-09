@@ -69,6 +69,9 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#if !defined(__linux__)
+#include <fstream>
+#endif
 #include <limits>
 #include <memory>
 #include <string_view>

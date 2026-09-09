@@ -7,6 +7,7 @@
 #endif
 
 #include "process_exec_linux.hpp"
+#include "process_environment.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -275,6 +276,7 @@ struct Environment {
         }
     }
 }
+
 } // namespace
 
 Result<std::pair<int, std::string>>
@@ -284,6 +286,12 @@ processExecLinux(const std::vector<std::string> &args,
                  bool capture_output) {
     if (args.empty()) {
         return std::unexpected("Cannot execute empty command");
+    }
+
+    if (env) {
+        if (auto validation = detail::validateEnvironment(*env); !validation) {
+            return std::unexpected(validation.error());
+        }
     }
 
     FileDescriptor capture_read;
