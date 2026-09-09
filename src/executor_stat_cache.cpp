@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <mutex>
 using catalyst::StatCache;
 
 // NOLINTBEGIN(cppcoreguidelines-pro-bounds-constant-array-index)
